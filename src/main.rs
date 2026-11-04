@@ -15,6 +15,7 @@ mod highlight;
 mod home;
 mod html;
 mod input;
+mod local_file;
 mod modes;
 #[cfg(target_os = "macos")]
 mod native_header;
@@ -123,6 +124,7 @@ fn main() {
         editor::keymap::bind_keys(cx);
         editor::image::bind_keys(cx);
         app::bind_keys(cx);
+        local_file::install(cx);
         settings::load();
         themes::load(&settings::prefs().theme_id(), false, || cx.text_system().all_font_names());
         shortcuts::init(cx);
@@ -131,6 +133,8 @@ fn main() {
         if quick_enabled { quick_note::install(cx); }
         app::set_menus(cx);
         open_main_window(scripted, cx);
+        let paths: Vec<_> = std::env::args_os().skip(1).filter(|p| !p.to_string_lossy().starts_with("-psn_")).map(std::path::PathBuf::from).collect();
+        local_file::open_paths(&paths, cx);
         cx.on_window_closed(move |cx| {
             if (!quick_enabled || !cfg!(target_os = "macos")) && cx.windows().is_empty() {
                 cx.quit();

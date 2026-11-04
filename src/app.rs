@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-actions!(workspace, [NewDoc, ImportDoc, ToggleSidebar, FocusSearch, FindInDoc, ReplaceInDoc, OpenSettings, OpenAbout, GoHome, CloseWindow, Quit,
+actions!(workspace, [NewDoc, ImportDoc, OpenLocalFile, ToggleSidebar, FocusSearch, FindInDoc, ReplaceInDoc, OpenSettings, OpenAbout, GoHome, CloseWindow, Quit,
     HideApp, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen]);
 
 /// The menu bar, in the interface language.
@@ -45,6 +45,7 @@ pub fn set_menus(cx: &mut App) {
             items: vec![
                 MenuItem::action(tr("新建文档", "New Document"), NewDoc),
                 MenuItem::action(tr("新建笔记窗口", "New Note Window"), crate::quick_note::QuickNew),
+                MenuItem::action(tr("打开文件…", "Open File…"), OpenLocalFile),
                 MenuItem::action(tr("导入为文档…", "Import as Document…"), ImportDoc),
                 MenuItem::separator(),
                 MenuItem::action(tr("关闭窗口", "Close Window"), CloseWindow),
@@ -85,6 +86,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-shift-n", crate::quick_note::QuickNew, None),
         KeyBinding::new("cmd-,", OpenSettings, None),
         KeyBinding::new("cmd-shift-i", ImportDoc, None),
+        KeyBinding::new("cmd-o", OpenLocalFile, None),
         KeyBinding::new("cmd-alt-home", GoHome, None),
         KeyBinding::new("cmd-w", CloseWindow, None),
         KeyBinding::new("cmd-]", ToggleSidebar, None),
@@ -123,6 +125,7 @@ pub fn bind_keys(cx: &mut App) {
         }
     });
     cx.on_action(|_: &Quit, cx| {
+        if !crate::local_file::save_before_quit(cx) { return; }
         // The open document is saved first; when that fails its dialog asks
         // (重试 / 放弃修改) and quits afterwards.
         let ready = cx

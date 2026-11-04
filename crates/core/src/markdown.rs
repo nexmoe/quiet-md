@@ -11,6 +11,8 @@ pub struct Options<'a> {
     /// 所有内容: images are kept, local ones copied into this folder next to
     /// the .md file. None is 仅文本（不含图片和附件）.
     pub assets: Option<&'a str>,
+    /// Saving an existing Markdown file keeps its image and attachment paths.
+    pub preserve_paths: bool,
 }
 
 pub struct Export {
@@ -122,6 +124,7 @@ impl Writer<'_> {
     /// The link for an image: remote ones stay remote, local files get a
     /// copy in the assets folder (same name, numbered on clashes).
     fn image(&mut self, src: &str, dir: &str) -> String {
+        if self.opts.preserve_paths { return src.to_string(); }
         if src.starts_with("http://") || src.starts_with("https://") {
             return src.to_string();
         }
