@@ -90,6 +90,7 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 | `store.rs` | 文档库读写、索引恢复、回收站、设置；`image_path` |
 | `paste.rs` | HTML / Markdown → block（粘贴和导入共用） |
 | `markdown.rs` | 导出 Markdown |
+| `markdown_file.rs` | Markdown / MDX 文件读取、相对图片路径和原文件原子保存；复用现有 Markdown 转换和导出 |
 | `lang.rs` | 代码语言表 |
 | `palette.rs` | 文字色、背景色、高亮块色板（RGBA，不依赖 GPUI；`theme.rs` 转成 GPUI 颜色） |
 | `time.rs` | 日期换算、本地时区、当前时间 |
@@ -101,6 +102,7 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 
 | 模块 | 内容 |
 |---|---|
+| `local_file.rs` | 本地 Markdown / MDX 文件窗口、保存状态和关闭确认；复用 `Editor`，文件读写交给 core |
 | `main.rs` | 入口；`FDL_SCRIPT` 脚本模式；重新导出 `fdl_core` 的模块 |
 | `guides.rs` | 文档库是空的时放入内置的「开始指南」（只放一次） |
 | `app.rs` | `Workspace`：两栏窗口、打开 / 新建 / 保存 / 删除、保存状态、提醒调度 |

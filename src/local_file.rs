@@ -45,7 +45,7 @@ fn open_path(path: &Path, cx: &mut App) -> anyhow::Result<()> {
     }
     let original = std::fs::read(&path)?;
     std::str::from_utf8(&original)?;
-    let doc = crate::transfer::markdown_document(&path, false)?;
+    let doc = crate::markdown_file::read(&path, false)?;
     let title = format!("{} — quiet.md", path.file_name().unwrap_or_default().to_string_lossy());
     cx.open_window(WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(900.), px(720.)), cx))),
@@ -91,7 +91,7 @@ impl LocalFile {
         let doc = &self.editor.read(cx).core.doc;
         let result = std::fs::read(&self.path).and_then(|bytes| {
             if bytes != self.original { return Err(std::io::Error::other(tr("文件已被其他程序修改，请重新打开后再保存", "File changed on disk; reopen it before saving"))); }
-            crate::transfer::save_markdown_document(&self.path, doc)
+            crate::markdown_file::write(&self.path, doc)
         });
         match result {
             Ok(bytes) => { self.original = bytes; self.saved = doc.clone(); self.dirty = false; self.error = None; },
