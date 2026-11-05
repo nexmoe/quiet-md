@@ -426,6 +426,14 @@ mod native {
     }
 
     pub fn send(ns_view: usize, kind: u64, x: f32, y: f32, clicks: i64) {
+        send_to(ns_view, kind, x, y, clicks, false);
+    }
+
+    pub fn send_child(ns_view: usize, kind: u64, x: f32, y: f32, clicks: i64) {
+        send_to(ns_view, kind, x, y, clicks, true);
+    }
+
+    fn send_to(ns_view: usize, kind: u64, x: f32, y: f32, clicks: i64, child: bool) {
         unsafe {
             let view = ns_view as *mut Object;
             let win: *mut Object = msg_send![view, window];
@@ -443,6 +451,8 @@ mod native {
                 eventNumber: 0isize
                 clickCount: clicks
                 pressure: 1.0f32];
+            let view: *mut Object = if child { msg_send![view, hitTest:loc] } else { view };
+            if view.is_null() { return }
             // Deliver straight to the view: going through `-[NSWindow sendEvent:]`
             // would require the window to be key, i.e. steal focus from the user.
             match kind {
@@ -472,6 +482,11 @@ fn mouse_step(view: usize, cmd: &str, n: &[f32]) -> bool {
         log_pointer(n[0], n[1], if cmd == "move" { "move" } else { "click" });
     }
     match cmd {
+        "webclick" if n.len() >= 2 => {
+            send_child(view, MOVED, n[0], n[1], 0);
+            send_child(view, LEFT_DOWN, n[0], n[1], 1);
+            send_child(view, LEFT_UP, n[0], n[1], 1);
+        }
         "move" if n.len() >= 2 => send(view, MOVED, n[0], n[1], 0),
         "click" if n.len() >= 2 => {
             send(view, MOVED, n[0], n[1], 0);
@@ -512,6 +527,11 @@ fn mouse_step(view: usize, cmd: &str, n: &[f32]) -> bool {
 
 fn run(cmd: &str, rest: &str, window: &mut Window, cx: &mut App) {
     match cmd {
+        "html" => {
+            let (index, js) = rest.split_once(' ').unwrap_or(("0", rest));
+            if let Some(root) = window.root::<crate::app::Workspace>().flatten()
+                && let Some(editor) = &root.read(cx).editor { editor.read(cx).inspect_html(index.parse().unwrap_or(0), js); }
+        }
         // Synthesized right-button NSEvents report buttonNumber 0, so GPUI would
         // read them as left clicks; feed the right click to GPUI directly.
         "rclick" => {

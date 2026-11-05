@@ -197,6 +197,10 @@ impl Writer<'_> {
                 self.blocks(&b.children, depth, out);
                 out.push_str("</div></div>");
             }
+            BlockKind::Html(html) => {
+                let xml = crate::docxml::serialize_blocks(std::slice::from_ref(b));
+                out.push_str(&html.markup(&xml));
+            }
             BlockKind::Divider => out.push_str("<hr>"),
             BlockKind::Image { src, width, height, caption, crop, .. } => {
                 let _ = write!(out, "<div class=\"img\"{align}>");

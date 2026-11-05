@@ -88,6 +88,7 @@ impl Writer<'_> {
                 let fence = if b.text.text.contains("```") { "````" } else { "```" };
                 format!("{fence}{lang}\n{}\n{fence}", b.text.text)
             }
+            BlockKind::Html(html) => html.markup(&crate::docxml::serialize_blocks(std::slice::from_ref(b))),
             BlockKind::Quote => indent(&self.blocks(&b.children), "> "),
             BlockKind::Callout { emoji, .. } => {
                 let body = self.blocks(&b.children);

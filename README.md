@@ -41,7 +41,7 @@
 
 ## Why quiet.md
 
-**⚡ Fast, the native kind of fast.** The whole interface is drawn on the GPU by Rust and [GPUI](https://www.gpui.rs/). No WebView, no Electron. In a one-million-character document, typing, deleting and scrolling all stay under 6 ms per frame at P95.
+**⚡ Fast, the native kind of fast.** The editor is drawn on the GPU by Rust and [GPUI](https://www.gpui.rs/), without Electron. HTML blocks use an isolated system WebView to display webpages. In a one-million-character document, typing, deleting and scrolling all stay under 6 ms per frame at P95.
 
 **🔒 Local-first. Your files are yours.** No account, no cloud, and nothing goes over the network by default (the optional update check aside). Your library is an ordinary folder on your computer, and each note is one XML file. Manage it with Git, iCloud or any sync tool you like; if you ever stop using quiet.md, your files are still there.
 
@@ -85,12 +85,13 @@ A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character doc
 |---|---|
 | macOS download | ~18 MB |
 | Windows installer | ~14 MB |
-| Runtime | No WebView, no Electron, no background services |
+| Runtime | Native GPUI editor; system WebView for HTML blocks; no Electron or background services |
 
 <sub>Apple M5 Pro / 48 GiB, macOS 26.5, release build. Methodology and scripts to reproduce: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).</sub>
 
 ## Features
 
+- **HTML blocks**: upload or drop an `.html` / `.htm` file, edit its source next to a live HTML/CSS/JavaScript preview, resize the split, and enter fullscreen. HTML source is saved in the document; remote resources in that source may access the network. Windows requires the Microsoft Edge WebView2 Runtime.
 - **Editing**: headings, ordered and bulleted lists, to-dos, quotes, code blocks with syntax highlighting, LaTeX math, tables (with merged cells), callouts, columns, images, attachments and covers. Markdown shortcuts such as `#`, `-`, `[]` and `>`, plus a `/` slash menu.
 - **Organizing**: a document tree, pinning, favorites, full-text search and a trash.
 - **Import and export**: import Markdown and Feishu (Lark) DocxXML; export Markdown and PDF, or print directly. Pasting from Feishu or a web page keeps the structure.

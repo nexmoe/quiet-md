@@ -1112,6 +1112,12 @@ impl Core {
         Some(last)
     }
 
+    pub fn set_html(&mut self, id: BlockId, html: crate::html_block::HtmlBlock, typing: bool) {
+        if !matches!(self.kind_of(id), Some(BlockKind::Html(old)) if old != &html) { return }
+        self.checkpoint(if typing { EditKind::Typing } else { EditKind::Other });
+        if let Some(b) = self.block_mut(id) { b.kind = BlockKind::Html(html); }
+    }
+
     pub fn is_code(&self, id: BlockId) -> bool {
         self.block(id).is_some_and(|b| matches!(b.kind, BlockKind::Code { .. }))
     }

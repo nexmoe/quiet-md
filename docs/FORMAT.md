@@ -78,3 +78,9 @@ DocxXML 里没有、本应用自己加的写法。别的工具不认识这些写
 
 - **单元格内的尾随空格。** 如果单元格里某个 block 有嵌套子级，它文本末尾的空格或 Tab 读回时会丢失。原因：旧版本写单元格时带缩进，读入要能兼容，所以必须丢掉嵌套 block 前的空白。fuzzer 的 `round_trip` 对这一点做了相同的预处理（`trim_before_nested`）。
 - 代码块、分割线、图片等不能有子级的 block 如果在内存里带了子级，写出时这些子级会被丢掉。编辑器保证不会产生这种结构（见 ARCHITECTURE.md 的不变量）。
+
+## HTML 块
+
+本地规范写法是 `<html-block record="…"/>`，`record` 是经过 XML 属性转义的 JSON，`html` 保存完整源码。`quiet_md.height` 和 `quiet_md.split` 保存预览高度基准与编辑区比例；其他 record 字段原样保留。Markdown 和 HTML 导出用隔离 iframe 显示内容，并用 `data-quiet-html` 保留完整 XML，以便重新导入。
+
+飞书 HTML 块组件 `blk_6358a421bca0001c190a9805` 带 `record.html` 时可编辑，原标签、身份属性和未知设置随保存保留；只有远端 token、没有源码的组件继续作为 Raw 保留。HTML 内容在无宿主权限的 sandbox iframe 中执行，不能读取文档库或调用编辑器接口。

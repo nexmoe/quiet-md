@@ -105,6 +105,7 @@ fn hash_block(b: &Block, orders: &rustc_hash::FxHashMap<BlockId, String>, h: &mu
     match &b.kind {
         BlockKind::Heading { level, .. } => (level, orders.get(&b.id)).hash(h),
         BlockKind::Code { wrap, .. } => wrap.hash(h),
+        BlockKind::Html(html) => (html.source.len(), html.height().to_bits(), html.split().to_bits()).hash(h),
         BlockKind::Image { src, width, height, caption, crop, .. } => {
             (src, width.map(f32::to_bits), height.map(f32::to_bits), caption.as_ref().map(String::len), crop.map(|c| c.map(f32::to_bits))).hash(h)
         }
@@ -430,6 +431,7 @@ impl R<'_> {
             BlockKind::Image { .. } => self.image(b, env, cx),
             BlockKind::SubPageList => self.sub_page_list(b, cx),
             BlockKind::Countdown(c) => self.countdown(b, c, cx),
+            BlockKind::Html(html) => self.html_block(b, html, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
             BlockKind::Table(t) => self.table(b, t, cx),
@@ -1045,6 +1047,7 @@ impl Editor {
         // A folded code block is a 40px row.
         nonces.extend(self.code_folded.iter().map(|&id| (id, id.0.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1)));
         nonces.extend(self.image_nonces(focused).into_iter().chain(self.button_nonce()));
+        nonces.extend(self.html_nonces());
         // Walking a long document costs ~1.5ms (1M chars): skip it when
         // nothing the rows depend on changed, as on every scrolling frame.
         let mut fh = FxHasher::default();
@@ -1124,9 +1127,11 @@ impl Editor {
                 list = b.map_or(&[][..], |b| b.children.as_slice());
             }
             let found = b.map(super::caption::captions_in).unwrap_or_default();
+            let html = b.map(super::html_block::html_in).unwrap_or_default();
             if !found.is_empty() {
                 self.ensure_captions(found, window, cx);
             }
+            if !html.is_empty() { self.ensure_html(html, window, cx); }
         }
         let mut r = R {
             ed: self,
@@ -1298,6 +1303,8 @@ impl Editor {
         // before the caches are reset for this frame.
         let overlays = self.render_overlays(window, cx);
         let lightbox = self.lightbox_el(window, cx);
+        self.begin_html_frame(lightbox.is_some() || self.menu.is_some() || self.slash.is_some() || self.find.is_some() || self.mention.is_some() || self.cd.dialog.is_some());
+        let html_full = self.html_fullscreen(window, cx);
         let toast = self.toast_el(window);
         let probes = std::mem::take(&mut *self.probes.borrow_mut());
         let origin0 = self.content_origin.get();
@@ -1516,6 +1523,7 @@ impl Editor {
                     });
                 }
                 entity.update(cx, |ed, cx| {
+                    ed.finish_html_frame();
                     ed.start_downloads(cx);
                     ed.start_thumbs(cx);
                     // A notify during the draw is dropped (even a deferred
@@ -1583,6 +1591,7 @@ impl Editor {
             .children(counter)
             .children(find_box)
             .children(lightbox)
+            .children(html_full)
             .children(toast)
             .child(root_canvas)
     }
@@ -1748,6 +1757,7 @@ pub(super) fn block_feishu(&self, b: &Block, siblings: &[Block], idx: usize, env
             BlockKind::Image { .. } => self.image(b, env, cx),
             BlockKind::SubPageList => self.sub_page_list(b, cx),
             BlockKind::Countdown(c) => self.countdown(b, c, cx),
+            BlockKind::Html(html) => self.html_block(b, html, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
             BlockKind::Table(t) => self.table(b, t, cx),

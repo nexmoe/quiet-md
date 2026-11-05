@@ -41,7 +41,7 @@
 
 ## 为什么是 quiet.md
 
-**⚡ 快，原生的那种快。** 整个界面由 Rust 和 [GPUI](https://www.gpui.rs/) 直接用 GPU 绘制，没有 WebView、没有 Electron。百万字文档实测中，输入、删除和滚动的帧处理 P95 均低于 6 ms。
+**⚡ 快，原生的那种快。** 编辑器由 Rust 和 [GPUI](https://www.gpui.rs/) 直接用 GPU 绘制，不使用 Electron；HTML 块通过隔离的系统 WebView 显示网页。百万字文档实测中，输入、删除和滚动的帧处理 P95 均低于 6 ms。
 
 **🔒 本地优先，文件归你。** 没有账号，没有云端，默认不联网。文档库就是电脑上的一个普通文件夹，每篇笔记是一个 XML 文件。用 Git、iCloud、坚果云或任何同步工具管理都可以，哪天不用了，文件也还在。
 
@@ -83,12 +83,13 @@
 |---|---|
 | macOS 安装包 | 约 18 MB |
 | Windows 安装包 | 约 14 MB |
-| 运行时 | 无 WebView、无 Electron、无后台服务 |
+| 运行时 | 原生 GPUI 编辑器；HTML 块使用系统 WebView；无 Electron、无后台服务 |
 
 <sub>Apple M5 Pro / 48 GiB，macOS 26.5，Release 构建。测试方法和复现脚本见 [docs/PERFORMANCE.md](docs/PERFORMANCE.md)。</sub>
 
 ## 功能
 
+- **HTML 块**：上传或拖入 `.html` / `.htm` 文件，并排编辑源码和预览 HTML/CSS/JavaScript，支持调整分隔线和全屏。HTML 源码保存在文档中；源码里的远程资源可能联网。Windows 需要 Microsoft Edge WebView2 Runtime。
 - **编辑**：标题、有序 / 无序列表、待办、引用、代码块（语法高亮）、LaTeX 公式、表格（可合并单元格）、高亮块、分栏、图片、附件、封面。支持 `#`、`-`、`[]`、`>` 等 Markdown 快捷输入和 `/` 斜杠菜单。
 - **整理**：文档树、置顶、收藏、全文搜索、回收站。
 - **导入导出**：导入 Markdown 和飞书 DocxXML；导出 Markdown、PDF，也可以直接打印。从飞书或网页粘贴时保留结构。

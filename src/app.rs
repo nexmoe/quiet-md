@@ -1213,6 +1213,11 @@ pub(crate) const HEADER_ACTIONS_H: f32 = 32.;
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(ed) = &self.editor {
+            let obscured = self.view != View::Doc || self.search_open || self.doc_menu || self.doc_info.is_some() || self.row_menu.is_some()
+                || self.confirm.is_some() || self.move_dlg.is_some() || self.export_md.is_some() || self.mode_menu || self.shortcuts || self.rename.is_some();
+            ed.update(cx, |e, cx| e.obscure_html(obscured, cx));
+        }
         self.native_sidebar.sync(if self.sidebar_open { self.sidebar_w(window) } else { 0. }, window);
         let sidebar = if self.sidebar_open { Some(if matches!(self.view, View::Settings | View::Trash) { self.render_settings_sidebar(window, cx) } else { self.render_sidebar(window, cx) }) } else { None };
         let row_menu = self.render_row_menu(window, cx);

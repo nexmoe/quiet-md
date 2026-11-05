@@ -11,6 +11,7 @@ mod file;
 mod find;
 mod gap;
 mod grid;
+mod html_block;
 pub mod image;
 pub mod keymap;
 mod link;

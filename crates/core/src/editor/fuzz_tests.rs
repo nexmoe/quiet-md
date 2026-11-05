@@ -116,7 +116,7 @@ fn step(c: &mut Core, rng: &mut Rng) -> String {
     }
     let us = c.units();
     let any = |rng: &mut Rng| rng.pick(&us).id;
-    match rng.below(23) {
+    match rng.below(24) {
         0..=2 => {
             let s = *rng.pick(TEXTS);
             c.insert_text(s);
@@ -211,6 +211,18 @@ fn step(c: &mut Core, rng: &mut Rng) -> String {
         }
         20 => table_step(c, rng),
         21 => object_step(c, rng),
+        22 => {
+            let id = any(rng);
+            if let Some(BlockKind::Html(mut html)) = c.kind_of(id).cloned() {
+                html.source.push_str("<p>中文 &amp; HTML</p>");
+                html.set_layout(160. + rng.below(800) as f32, 0.2 + rng.below(60) as f32 / 100.);
+                c.set_html(id, html, false);
+            } else {
+                let id = c.insert_block(Block::new(BlockKind::Html(crate::html_block::HtmlBlock::new("<h1>HTML</h1>")), RichText::default()));
+                let next = c.ensure_paragraph_after(id); c.sel = Selection::caret(Pos::new(next, 0));
+            }
+            "html block: insert or edit".into()
+        }
         _ => {
             c.trailing_line();
             "trailing_line".into()

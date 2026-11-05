@@ -84,6 +84,7 @@ pub fn kind_icon(k: &BlockKind) -> &'static str {
         BlockKind::Raw { .. } => "file-text",
         BlockKind::SubPageList => "list-tree",
         BlockKind::Countdown(_) => "timer",
+        BlockKind::Html(_) => "braces",
         BlockKind::File(_) => "paperclip",
     }
 }

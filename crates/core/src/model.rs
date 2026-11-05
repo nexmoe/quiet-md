@@ -751,6 +751,7 @@ pub enum BlockKind {
     SubPageList,
     /// 倒计时 (an add-on block; `<countdown …/>` is ours).
     Countdown(Countdown),
+    Html(crate::html_block::HtmlBlock),
     /// 视频或文件 (`<source>`, or `<figure view-type><source/></figure>`).
     File(FileBlock),
     /// Any element we don't model; kept verbatim for round-tripping.

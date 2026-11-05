@@ -14,6 +14,7 @@ mod editor;
 mod highlight;
 mod home;
 mod html;
+mod html_preview;
 mod input;
 mod modes;
 #[cfg(target_os = "macos")]

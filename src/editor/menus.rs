@@ -24,6 +24,7 @@ pub enum SlashKind {
     Button,
     File,
     Reminder,
+    Html,
 }
 
 pub struct SlashItem {
@@ -185,6 +186,7 @@ pub const SLASH_ITEMS: &[SlashItem] = &[
         keywords: &["日期提醒", "riqitixing", "rqtx", "reminder", "tixing", "date"],
     },
     SlashItem { kind: SlashKind::Countdown, label: "倒计时", icon: "timer", color: ORANGE, group: 3, keywords: &["倒计时", "djs", "timer", "daojishi", "countdown"] },
+    SlashItem { kind: SlashKind::Html, label: "HTML 块", icon: "braces", color: BLUE, group: 3, keywords: &["html", "网页", "html block", "wangye"] },
 ];
 
 /// Whether a basic-group item shows in the icon grid. 文本 shows only where

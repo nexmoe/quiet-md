@@ -269,6 +269,23 @@ fn node(n: &Handle, ctx: &Ctx, out: &mut Vec<Block>, para: &mut RichText) {
         NodeData::Text { contents } => push_text(para, &contents.borrow(), &ctx.marks),
         NodeData::Element { .. } => {
             let t = tag(n).unwrap_or_default();
+            if let Some(xml) = attr(n, "data-quiet-html")
+                && let Ok(doc) = crate::docxml::parse(&xml)
+                && doc.blocks.len() == 1 && matches!(doc.blocks[0].kind, BlockKind::Html(_)) {
+                flush(para, ctx, out);
+                out.extend(doc.blocks);
+                return;
+            }
+            if ["add-ons", "add_ons", "isv", "readonly-block", "html5-block", "html-block"].contains(&t.as_str())
+                && (t == "html-block" || ["component-type-id", "component_type_id", "component-id"].iter().any(|k| attr(n, k).as_deref() == Some(crate::html_block::COMPONENT_ID)))
+                && let Some(mut html) = attr(n, "record").as_deref().and_then(crate::html_block::HtmlBlock::from_record) {
+                if t != "html-block" && let NodeData::Element { attrs, .. } = &n.data {
+                    html.envelope = Some((t.clone(), attrs.borrow().iter().filter(|a| &*a.name.local != "record").map(|a| (a.name.local.to_string(), a.value.to_string())).collect()));
+                }
+                flush(para, ctx, out);
+                out.push(Block::new(BlockKind::Html(html), RichText::default()));
+                return;
+            }
             let st = style(n);
             if SKIP.contains(&t.as_str()) || hidden(&st) {
                 return;
@@ -884,6 +901,15 @@ fn md_blocks(lines: &[&str], off: Off) -> Vec<Block> {
         }
         let ind = indent_of(line);
         let body = line.trim();
+        if body.starts_with("<iframe ") && body.contains("data-quiet-html=") {
+            let imported = html_to_blocks(body);
+            if imported.len() == 1 && matches!(imported[0].kind, BlockKind::Html(_)) { out.extend(imported); i += 1; last_list = false; continue }
+        }
+        if ["<html-block ", "<add-ons ", "<add_ons ", "<isv ", "<readonly-block ", "<html5-block "].iter().any(|tag| body.starts_with(tag))
+            && let Ok(doc) = crate::docxml::parse(body)
+            && doc.blocks.len() == 1 && matches!(doc.blocks[0].kind, BlockKind::Html(_)) {
+            out.extend(doc.blocks); i += 1; last_list = false; continue;
+        }
         // Fenced code (closed or running to the end).
         if let Some((fc, n, info)) = fence(line).filter(|_| !off.code_divider) {
             let mut code = vec![];

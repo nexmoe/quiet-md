@@ -88,6 +88,7 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 | `model.rs` | 文档模型，包括行内对象类型、`display_title` |
 | `docxml.rs` | DocxXML 解析与序列化；`to_inline` 构造行内对象 |
 | `store.rs` | 文档库读写、索引恢复、回收站、设置；`image_path` |
+| `html_block.rs` | HTML 块源码、飞书组件 record 和身份、布局设置；不依赖网页引擎 |
 | `paste.rs` | HTML / Markdown → block（粘贴和导入共用） |
 | `markdown.rs` | 导出 Markdown |
 | `lang.rs` | 代码语言表 |
@@ -105,6 +106,7 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 | `guides.rs` | 文档库是空的时放入内置的「开始指南」（只放一次） |
 | `app.rs` | `Workspace`：两栏窗口、打开 / 新建 / 保存 / 删除、保存状态、提醒调度 |
 | `html.rs` / `printing.rs` / `transfer.rs` | 导出 HTML / PDF、打印、导入导出的界面 |
+| `html_preview.rs` / `html_preview.html` | HTML 块的系统网页预览、裁剪宿主与隔离外壳；macOS 使用 WKWebView，Windows 使用 WebView2 |
 | `clipboard.rs` | 系统剪贴板的 HTML 读取，以及脚本模式的模拟剪贴板 |
 | `sidebar.rs` / `tree.rs` | 左栏与文档树（子文档、移动到） |
 | `home.rs` / `trash.rs` | 主页、回收站 |
@@ -127,6 +129,7 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 | `drag.rs` / `gap.rs` | 拖动 block、点击 block 间隙 |
 | `table.rs` / `grid.rs` | 表格（界面部分；操作在 core 的 `table_ops.rs`）、分栏 |
 | `image.rs` / `file.rs` / `cover.rs` | 图片、视频或文件、图标与封面 |
+| `html_block.rs` | HTML 块生命周期、源码编辑、上传、全屏及 Core 撤销；只为屏幕上的块创建网页预览，最多缓存 8 个 |
 | `math.rs` | 公式（katex-rs 生成 HTML，再自行排版） |
 | `link.rs` / `links.rs` | 链接面板与卡片；@文档 与引用列表 |
 | `button.rs` / `countdown.rs` / `reminder.rs` / `subpages.rs` | 按钮、倒计时、日期提醒、子页面列表 |

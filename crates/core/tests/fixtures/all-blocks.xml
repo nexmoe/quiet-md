@@ -90,3 +90,4 @@
 <sheet token="shtabc"/>
 <bookmark href="https://example.com" title="书签"/>
 <p>结尾</p>
+<html-block record="{&quot;html&quot;:&quot;&lt;style&gt;p{color:red}&lt;/style&gt;&lt;p&gt;HTML 中文 &amp;amp; text&lt;/p&gt;&quot;}"/>

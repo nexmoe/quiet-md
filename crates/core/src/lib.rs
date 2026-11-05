@@ -5,6 +5,7 @@
 pub mod docxml;
 pub mod editor;
 pub mod emoji;
+pub mod html_block;
 pub mod lang;
 pub mod markdown;
 pub mod model;

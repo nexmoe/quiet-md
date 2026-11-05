@@ -1,0 +1,42 @@
+# Run with FDL_NOPARK=1 FDL_WINDOW_CAPTURE=1; uses only the throwaway library.
+wait 1000
+place 120 80
+key cmd-n
+type HTML block QA
+key enter
+type /html
+wait 300
+key enter
+wait 1200
+html 0 JSON.stringify({welcome:document.querySelector('h1').textContent,sandbox:document.querySelector('iframe').sandbox.value})
+shot html-empty
+html 0 window.qa=[];addEventListener('message',e=>{if(e.data?.qa)window.qa.push(e.data)});const source='<style>body{font:16px system-ui;padding:24px}h1{color:#3370ff}#counter{position:absolute;left:24px;top:84px;height:32px;width:120px}</style><h1>HTML 中文</h1><button id="counter" onclick="this.textContent=++window.count;parent.postMessage({qa:true,count:window.count},\'*\')">Count</button><script>window.count=0;let blocked=false;try{parent.document.body.dataset.leak="bad"}catch(e){blocked=true}parent.postMessage({qa:true,blocked,ipc:typeof window.ipc},"*")<\/script>';const dt=new DataTransfer();dt.items.add(new File([source],'example.html',{type:'text/html'}));document.dispatchEvent(new DragEvent('drop',{dataTransfer:dt}));true
+wait 600
+html 0 document.getElementById('full').click()
+wait 400
+webclick 80 188
+wait 300
+html 0 JSON.stringify({qa:window.qa,full:document.body.classList.contains('full')})
+shot html-full-preview
+html 0 document.getElementById('edit').click()
+wait 200
+html 0 document.getElementById('code').value='<style>h1{color:green}</style><h1>Edited 中文</h1>';document.getElementById('code').dispatchEvent(new Event('input'));true
+wait 300
+html 0 document.getElementById('code').dispatchEvent(new KeyboardEvent('keydown',{key:'z',metaKey:true,bubbles:true}))
+wait 200
+html 0 JSON.stringify({undo:document.getElementById('code').value.includes('HTML 中文')})
+html 0 document.getElementById('code').dispatchEvent(new KeyboardEvent('keydown',{key:'z',metaKey:true,shiftKey:true,bubbles:true}))
+wait 200
+html 0 document.getElementById('divider').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))
+wait 200
+html 0 JSON.stringify({redo:document.getElementById('code').value.includes('Edited 中文'),highlight:document.querySelectorAll('#syntax span[style]').length,split:getComputedStyle(document.documentElement).getPropertyValue('--split')})
+shot html-full-editor
+html 0 document.getElementById('close').click();document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));true
+wait 300
+key cmd-n
+type second
+wait 200
+click 94 162
+wait 500
+html 0 JSON.stringify({reopened:document.getElementById('code').value.includes('Edited 中文'),split:getComputedStyle(document.documentElement).getPropertyValue('--split')})
+shot html-reopened
