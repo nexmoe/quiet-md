@@ -1672,7 +1672,11 @@ impl Core {
             let adjacent = last.as_ref().is_some_and(|l| {
                 l.len() == p.len()
                     && l[..l.len() - 1] == p[..p.len() - 1]
-                    && seg_index(*l.last().unwrap()) + 1 == seg_index(*p.last().unwrap())
+                    && match (*l.last().unwrap(), *p.last().unwrap()) {
+                        (Seg::Child(a), Seg::Child(b)) => a + 1 == b,
+                        (Seg::Cell(r, c, a), Seg::Cell(s, d, b)) => r == s && c == d && a + 1 == b,
+                        _ => false,
+                    }
             });
             if adjacent {
                 groups.last_mut().unwrap().push(id);
@@ -3798,6 +3802,29 @@ mod tests {
             c.sel = Selection::caret(Pos::new(id(&c, 1), 0));
             typed(&mut c, input);
             assert!(xml(&c).contains(want), "{input:?} -> {}", xml(&c));
+        }
+    }
+
+    #[test]
+    fn wrapping_blocks_keeps_table_cells_separate() {
+        for boundary in ["</td><td>", "</td></tr><tr><td>"] {
+            let mut c = doc(&format!("<title>T</title><table><tr><td><p>a</p><p>b</p>{boundary}<p>c</p><p>d</p></td></tr></table>"));
+            let before = xml(&c);
+            let mut selected = vec![];
+            c.doc.for_each_block(|b| if matches!(b.text.text.as_str(), "a" | "d") { selected.push(b.id); });
+            c.turn_into(&selected, BlockKind::Quote);
+            let BlockKind::Table(t) = &c.doc.blocks[0].kind else { panic!() };
+            let cells: Vec<_> = t.rows.iter().flatten().collect();
+            assert_eq!(cells[0].blocks.len(), 2);
+            assert_eq!(cells[1].blocks.len(), 2);
+            assert!(matches!(cells[0].blocks[0].kind, BlockKind::Quote));
+            assert!(matches!(cells[1].blocks[1].kind, BlockKind::Quote));
+            assert_eq!(cells[0].blocks[0].children[0].text.text, "a");
+            assert_eq!(cells[0].blocks[1].text.text, "b");
+            assert_eq!(cells[1].blocks[0].text.text, "c");
+            assert_eq!(cells[1].blocks[1].children[0].text.text, "d");
+            c.undo();
+            assert_eq!(xml(&c), before);
         }
     }
 
