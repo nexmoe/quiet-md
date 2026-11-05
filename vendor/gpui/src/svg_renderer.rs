@@ -15,21 +15,32 @@ pub(crate) struct RenderSvgParams {
 }
 
 #[derive(Clone)]
+/// Rasterizes SVG assets, including text resolved through system fonts.
 pub struct SvgRenderer {
     asset_source: Arc<dyn AssetSource>,
     usvg_options: Arc<usvg::Options<'static>>,
 }
 
+/// The output dimensions or scale for SVG rasterization.
 pub enum SvgSize {
+    /// Fit the SVG to an explicit device-pixel width.
     Size(Size<DevicePixels>),
+    /// Scale the SVG's natural pixel dimensions.
     ScaleFactor(f32),
 }
 
 impl SvgRenderer {
+    /// Create a renderer using the application's asset source.
     pub fn new(asset_source: Arc<dyn AssetSource>) -> Self {
         static FONT_DB: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
             let mut db = usvg::fontdb::Database::new();
             db.load_system_fonts();
+            // quiet.md: LastResort advertises every character but draws placeholder boxes.
+            // usvg can then replace an entire mixed Latin/emoji run with those boxes.
+            let placeholders = db.faces().filter(|face| face.post_script_name == "LastResort"
+                || face.families.iter().any(|(name, _)| name == "Last Resort"))
+                .map(|face| face.id).collect::<Vec<_>>();
+            for id in placeholders { db.remove_face(id); }
             Arc::new(db)
         });
         let default_font_resolver = usvg::FontResolver::default_font_selector();
@@ -80,6 +91,7 @@ impl SvgRenderer {
         Ok(Some((size, alpha_mask)))
     }
 
+    /// Decode and rasterize SVG bytes at the requested resolution.
     pub fn render_pixmap(&self, bytes: &[u8], size: SvgSize) -> Result<Pixmap, usvg::Error> {
         let tree = usvg::Tree::from_data(bytes, &self.usvg_options)?;
         let svg_size = tree.size();

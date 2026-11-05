@@ -19,6 +19,7 @@ body { margin: 0; color: #1f2225; font: 15px/22px -apple-system, "SF Pro Text", 
 .icon { font-size: 48px; line-height: 56px; margin-bottom: 8px; }
 h1.title { font-size: 21px; line-height: 27px; font-weight: 700; margin: 0 0 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(0,0,0,0.045); }
 .b { margin: 13px 0; min-height: 22px; }
+.text-drawing svg { display: block; max-width: 100%; height: auto; }
 .h { font-weight: 600; }
 .h1 { font-size: 21px; line-height: 27px; font-weight: 700; margin-top: 48px; margin-bottom: 16px; }
 .h2 { font-size: 19px; line-height: 25px; font-weight: 700; margin-top: 36px; margin-bottom: 16px; }
@@ -232,6 +233,15 @@ impl Writer<'_> {
                         let _ = write!(out, "<a href=\"file://{}\">{}</a>", esc(&p.to_string_lossy()), esc(&f.name));
                     }
                     None => out.push_str(&esc(&f.name)),
+                }
+                out.push_str("</div>");
+            }
+            BlockKind::Diagram(d) => {
+                let envelope = format!(" data-quiet-md-envelope=\"{}\"", esc(&serde_json::to_string(&d.envelope).unwrap()));
+                let _ = write!(out, "<div class=\"b text-drawing\"{align} data-component-type-id=\"{}\" data-record=\"{}\"{envelope}>", fdl_core::diagram::COMPONENT_ID, esc(&d.record_json()));
+                match crate::diagram::export(d, 690.) {
+                    Ok(svg) => out.push_str(&svg),
+                    Err(_) => { let _ = write!(out, "<pre>{}</pre>", esc(&d.source)); }
                 }
                 out.push_str("</div>");
             }
@@ -453,6 +463,20 @@ fn esc(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drawings_export_as_svg_and_reimport_with_identity_and_layout() {
+        for envelope in [None, Some(("add_ons".into(), vec![("component_type_id".into(), fdl_core::diagram::COMPONENT_ID.into()), ("token".into(), "identity&7".into())]))] {
+            let mut d = fdl_core::diagram::TextDiagram::new("flowchart LR\nA[中文]-->B[SVG]");
+            d.envelope = envelope;
+            d.set_layout(fdl_core::diagram::DiagramLayout { zoom: 2., split: 0.6, pan: [-12., -24.] });
+            let doc = Document { blocks: vec![Block::new(BlockKind::Diagram(d.clone()), RichText::default())], ..Default::default() };
+            let h = to_html(&doc, &Options { sub_pages: &[] });
+            assert!(h.contains("<svg")); assert!(!h.contains("<script"));
+            let blocks = crate::paste::html_to_blocks(&h);
+            assert!(blocks.iter().any(|b| matches!(&b.kind, BlockKind::Diagram(read) if *read == d)));
+        }
+    }
 
     #[test]
     fn renders_blocks_and_marks() {

@@ -84,6 +84,11 @@ fn syntax(lang: &str) -> Option<Syntax> {
             bang_macros: true,
             ..Default::default()
         },
+        "Mermaid" => Syntax {
+            line_comments: &["%%"], quotes: "\"'",
+            keywords: &["flowchart", "graph", "sequenceDiagram", "classDiagram", "stateDiagram", "erDiagram", "gantt", "pie", "mindmap", "timeline", "journey", "gitGraph", "quadrantChart", "subgraph", "end", "participant", "actor", "as", "Note", "over", "loop", "alt", "else", "opt", "par", "critical", "break", "rect", "activate", "deactivate", "autonumber", "classDef", "class", "style", "linkStyle", "direction", "title", "section", "dateFormat", "commit", "branch", "checkout", "merge"],
+            literals: &["TD", "TB", "LR", "RL", "BT", "true", "false"], ..Default::default()
+        },
         "JavaScript" | "TypeScript" | "CoffeeScript" | "JSON" => Syntax {
             line_comments: &["//"],
             block_comment: Some(("/*", "*/")),

@@ -87,10 +87,11 @@ fn thumb_blocks(blocks: &[crate::model::Block], budget: &mut usize, depth: usize
                 if let BlockKind::Image { width, height, .. } = &mut kind { *width = Some(w); *height = Some(h); }
                 kind
             }
+            BlockKind::Diagram(_) => BlockKind::Code { lang: "Mermaid".into(), caption: Some(crate::settings::text("文本绘图").into()), wrap: true },
             BlockKind::Raw { tag, .. } => BlockKind::Raw { tag: tag.clone(), xml: String::new() },
             kind => kind.clone(),
         };
-        let text = b.text.slice(0..end);
+        let text = if let BlockKind::Diagram(d) = &b.kind { crate::model::RichText::plain(d.source.chars().take(320).collect::<String>()) } else { b.text.slice(0..end) };
         let mut preview = crate::model::RichText::default();
         for (range, marks) in text.spans() {
             let mut marks = marks.clone();

@@ -84,6 +84,7 @@ pub fn kind_icon(k: &BlockKind) -> &'static str {
         BlockKind::Raw { .. } => "file-text",
         BlockKind::SubPageList => "list-tree",
         BlockKind::Countdown(_) => "timer",
+        BlockKind::Diagram(_) => "columns-2",
         BlockKind::File(_) => "paperclip",
     }
 }
@@ -343,6 +344,7 @@ impl Editor {
 
     /// The block that shows the handle this frame.
     pub(super) fn handle_block(&self) -> Option<BlockId> {
+        if self.diagrams.full.is_some() { return None }
         if self.read_only || self.dragging || self.slash.is_some() || self.block_drag.as_ref().is_some_and(|d| d.started) {
             return None;
         }

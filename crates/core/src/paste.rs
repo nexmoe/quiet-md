@@ -119,6 +119,27 @@ fn attr(n: &Handle, key: &str) -> Option<String> {
     }
 }
 
+fn diagram_envelope(n: &Handle) -> Option<(String, Vec<(String, String)>)> {
+    if attr(n, "data-quiet-md-envelope").as_deref() == Some("null") { return None }
+    let valid_name = |s: &str| s.bytes().enumerate().all(|(i, c)| c.is_ascii_alphabetic() || c == b'_' || c == b':' || i > 0 && (c.is_ascii_digit() || c == b'-' || c == b'.')) && !s.is_empty();
+    if let Some(envelope) = attr(n, "data-quiet-md-envelope").and_then(|s| serde_json::from_str::<(String, Vec<(String, String)>)>(&s).ok())
+        && matches!(envelope.0.as_str(), "add-ons" | "add_ons" | "isv" | "readonly-block")
+        && envelope.1.iter().all(|(k, _)| valid_name(k) && k != "record")
+        && envelope.1.iter().map(|(k, _)| k).collect::<std::collections::HashSet<_>>().len() == envelope.1.len()
+        && envelope.1.iter().any(|(k, v)| matches!(k.as_str(), "component-type-id" | "component_type_id" | "component-id") && v == crate::diagram::COMPONENT_ID) { return Some(envelope) }
+    let mut attrs = match &n.data {
+        NodeData::Element { attrs, .. } => attrs.borrow().iter()
+            .filter(|a| !matches!(&*a.name.local, "record" | "data-record" | "data-quiet-md-envelope") && valid_name(&a.name.local))
+            .map(|a| (a.name.local.to_string(), a.value.to_string())).collect::<Vec<_>>(),
+        _ => vec![],
+    };
+    if !attrs.iter().any(|(k, v)| matches!(k.as_str(), "component-type-id" | "component_type_id" | "component-id") && v == crate::diagram::COMPONENT_ID) {
+        if let Some((_, value)) = attrs.iter_mut().find(|(k, _)| k == "component_type_id") { *value = crate::diagram::COMPONENT_ID.into(); }
+        else { attrs.push(("component_type_id".into(), crate::diagram::COMPONENT_ID.into())); }
+    }
+    Some(("add_ons".into(), attrs))
+}
+
 fn find(n: &Handle, name: &str) -> Option<Handle> {
     if tag(n).as_deref() == Some(name) {
         return Some(n.clone());
@@ -273,6 +294,14 @@ fn node(n: &Handle, ctx: &Ctx, out: &mut Vec<Block>, para: &mut RichText) {
             if SKIP.contains(&t.as_str()) || hidden(&st) {
                 return;
             }
+            let component = ["data-component-type-id", "component-type-id", "component_type_id"].iter().find_map(|k| attr(n, k));
+            if component.as_deref() == Some(crate::diagram::COMPONENT_ID)
+                && let Some(mut d) = ["data-record", "record"].iter().find_map(|k| attr(n, k)).and_then(|r| crate::diagram::TextDiagram::from_record(&r)) {
+                flush(para, ctx, out);
+                d.envelope = diagram_envelope(n);
+                out.push(Block::new(BlockKind::Diagram(d), RichText::default()));
+                return;
+            }
             let mut bctx = ctx.clone();
             if let Some(a) = align_of(n, &st) {
                 bctx.align = Some(a);
@@ -336,7 +365,10 @@ fn node(n: &Handle, ctx: &Ctx, out: &mut Vec<Block>, para: &mut RichText) {
                 }
                 "pre" if code_lang(n).is_some() || find(n, "code").is_some() => {
                     flush(para, ctx, out);
-                    out.push(code(n));
+                    let b = code(n);
+                    out.push(if matches!(&b.kind, BlockKind::Code { lang, .. } if lang.eq_ignore_ascii_case("mermaid")) {
+                        Block::new(BlockKind::Diagram(crate::diagram::TextDiagram::new(b.text.text)), RichText::default())
+                    } else { b });
                 }
                 // A `<pre>` that isn't code is text with its line breaks.
                 "pre" => {
@@ -899,8 +931,13 @@ fn md_blocks(lines: &[&str], off: Off) -> Vec<Block> {
                 code.push(dedent(lines[j], ind));
                 j += 1;
             }
-            let lang = crate::lang::resolve(info.split_whitespace().next().unwrap_or("")).to_string();
-            out.push(Block::new(BlockKind::Code { lang, caption: None, wrap: false }, RichText::plain(code.join("\n"))));
+            let token = info.split_whitespace().next().unwrap_or("");
+            if token.eq_ignore_ascii_case("mermaid") {
+                out.push(Block::new(BlockKind::Diagram(crate::diagram::TextDiagram::new(code.join("\n"))), RichText::default()));
+            } else {
+                let lang = crate::lang::resolve(token).to_string();
+                out.push(Block::new(BlockKind::Code { lang, caption: None, wrap: false }, RichText::plain(code.join("\n"))));
+            }
             i = j + 1;
             last_list = false;
             continue;

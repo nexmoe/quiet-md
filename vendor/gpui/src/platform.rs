@@ -1438,6 +1438,9 @@ pub enum CursorStyle {
     /// corresponds to the CSS cursor value `pointer`
     PointingHand,
 
+    /// quiet.md: a magnifying glass with a plus sign (`zoom-in`).
+    ZoomIn,
+
     /// A resize left cursor
     /// corresponds to the CSS cursor value `w-resize`
     ResizeLeft,
@@ -1506,6 +1509,21 @@ impl Default for CursorStyle {
     fn default() -> Self {
         Self::Arrow
     }
+}
+
+// quiet.md: shared magnifier artwork for Windows and older macOS versions.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn zoom_cursor_pixel(x: f32, y: f32) -> Option<bool> {
+    let (dx, dy) = (x - 10., y - 10.);
+    let radius = dx.hypot(dy);
+    if radius <= 8.5 {
+        let black = (6.5..=7.5).contains(&radius)
+            || dx.abs() <= 0.75 && dy.abs() <= 3.5 || dy.abs() <= 0.75 && dx.abs() <= 3.5;
+        return Some(!black);
+    }
+    let t = ((x + y - 32.) / 20.).clamp(0., 1.);
+    let distance = (x - 16. - 10. * t).hypot(y - 16. - 10. * t);
+    (distance <= 2.75).then_some(distance > 1.5)
 }
 
 /// A clipboard item that should be copied to the clipboard

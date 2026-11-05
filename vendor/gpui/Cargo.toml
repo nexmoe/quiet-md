@@ -336,6 +336,7 @@ features = [
     "text",
     "system-fonts",
     "memmap-fonts",
+    "raster-images", # quiet.md: bitmap glyphs in color emoji fonts.
 ]
 default-features = false
 

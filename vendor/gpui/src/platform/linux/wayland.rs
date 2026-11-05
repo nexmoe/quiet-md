@@ -20,6 +20,7 @@ impl CursorStyle {
             CursorStyle::ClosedHand => Shape::Grabbing,
             CursorStyle::OpenHand => Shape::Grab,
             CursorStyle::PointingHand => Shape::Pointer,
+            CursorStyle::ZoomIn => Shape::ZoomIn, // quiet.md
             CursorStyle::ResizeLeft => Shape::WResize,
             CursorStyle::ResizeRight => Shape::EResize,
             CursorStyle::ResizeLeftRight => Shape::EwResize,

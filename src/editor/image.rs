@@ -87,6 +87,29 @@ enum Src {
     Blocked,
 }
 
+enum ViewerSource {
+    File(PathBuf),
+    Rendered(Arc<RenderImage>),
+}
+
+impl ViewerSource {
+    fn image(self) -> ImageSource {
+        match self { Self::File(path) => path.into(), Self::Rendered(image) => image.into() }
+    }
+
+    fn decode(&self) -> Option<image::DynamicImage> {
+        match self {
+            Self::File(path) => image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok(),
+            Self::Rendered(image) => {
+                let size = image.size(0);
+                let mut bytes = image.as_bytes(0)?.to_vec();
+                for p in bytes.as_chunks_mut::<4>().0 { p.swap(0, 2); }
+                Some(image::DynamicImage::ImageRgba8(image::RgbaImage::from_raw(size.width.0.try_into().ok()?, size.height.0.try_into().ok()?, bytes)?))
+            }
+        }
+    }
+}
+
 struct Resize {
     id: BlockId,
     from_x: Pixels,
@@ -122,6 +145,7 @@ struct CropEdit {
 }
 
 struct Lightbox {
+    rendered: Option<(Arc<RenderImage>, f32, f32)>,
     ids: Vec<BlockId>,
     ix: usize,
     scale: f32,
@@ -170,6 +194,13 @@ pub struct ImageUi {
 }
 
 impl ImageUi {
+    pub(super) fn release(&mut self, cx: &mut App) {
+        if let Some(lb) = &mut self.lightbox {
+            if let Some((image, _, _)) = lb.rendered.take() { cx.defer(move |cx| cx.drop_image(image, None)); }
+            if let Some((_, _, Some(image))) = lb.rotated.take() { cx.defer(move |cx| cx.drop_image(image, None)); }
+        }
+    }
+
     pub fn new(cx: &mut App) -> Self {
         ImageUi {
             dims: RefCell::default(),
@@ -1142,10 +1173,15 @@ impl Editor {
                 ids.push(b.id);
             }
         });
+        self.start_lightbox(ids, id, None, window, cx);
+    }
+
+    fn start_lightbox(&mut self, ids: Vec<BlockId>, id: BlockId, rendered: Option<(Arc<RenderImage>, f32, f32)>, window: &mut Window, cx: &mut Context<Self>) {
         let ix = ids.iter().position(|i| *i == id).unwrap_or(0);
         let now = Instant::now();
         let vp = window.viewport_size();
         self.img.lightbox = Some(Lightbox {
+            rendered,
             ids,
             ix,
             scale: 1.,
@@ -1168,6 +1204,24 @@ impl Editor {
         cx.notify();
     }
 
+    pub(super) fn open_diagram_lightbox(&mut self, id: BlockId, image: Arc<RenderImage>, w: f32, h: f32, svg: Arc<str>, window: &mut Window, cx: &mut Context<Self>) {
+        self.start_lightbox(vec![id], id, Some((image, w, h)), window, cx);
+        let opened = self.img.lightbox.as_ref().unwrap().opened;
+        let renderer = cx.svg_renderer();
+        let scale = window.scale_factor() * 5.; // The viewer's maximum zoom.
+        let task = cx.background_executor().spawn(async move { crate::diagram::raster(renderer, &svg, w, h, scale) });
+        cx.spawn_in(window, async move |this, cx| {
+            let Ok(image) = task.await else { return };
+            let _ = this.update_in(cx, |e, window, cx| {
+                if let Some(lb) = &mut e.img.lightbox && lb.opened == opened {
+                    if let Some((old, _, _)) = lb.rendered.replace((image, w, h)) { cx.defer(move |cx| cx.drop_image(old, None)); }
+                    if let Some((_, _, Some(old))) = lb.rotated.take() { let _ = window.drop_image(old); }
+                    cx.notify();
+                } else { let _ = window.drop_image(image); }
+            });
+        }).detach();
+    }
+
     fn close_lightbox(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(lb) = &mut self.img.lightbox else { return };
         if lb.closing.is_none() {
@@ -1177,8 +1231,12 @@ impl Editor {
         }
     }
 
-    /// Path, crop and pixel size of the visible part of image `id`.
-    fn lb_source(&self, id: BlockId) -> Option<(PathBuf, [f32; 4], f32, f32)> {
+    /// Source, crop and logical size of the visible part of image `id`.
+    fn lb_source(&self, id: BlockId) -> Option<(ViewerSource, [f32; 4], f32, f32)> {
+        if let Some(lb) = &self.img.lightbox && lb.ids.get(lb.ix) == Some(&id)
+            && let Some((image, w, h)) = &lb.rendered {
+            return Some((ViewerSource::Rendered(image.clone()), FULL, *w, *h));
+        }
         let BlockKind::Image { src, crop, .. } = self.core.kind_of(id)? else { return None };
         let p = self.img.local(src)?;
         let c = valid_crop(*crop).unwrap_or(FULL);
@@ -1186,7 +1244,7 @@ impl Editor {
             Some((w, h)) => (w * (c[2] - c[0]), h * (c[3] - c[1])),
             None => self.image_geo(id).map(|(g, _)| (g.w, g.h))?,
         };
-        Some((p, c, w, h))
+        Some((ViewerSource::File(p), c, w, h))
     }
 
     /// Rotated pixel size of the current image.
@@ -1303,8 +1361,11 @@ impl Editor {
     /// 下载: saves the shown (cropped) image.
     fn lb_download(&mut self, cx: &mut Context<Self>) {
         let Some(lb) = &self.img.lightbox else { return };
-        let Some((path, crop, _, _)) = lb.ids.get(lb.ix).and_then(|id| self.lb_source(*id)) else { return };
-        let fmt = image::ImageReader::open(&path).ok().and_then(|r| r.with_guessed_format().ok()).and_then(|r| r.format());
+        let Some((source, crop, _, _)) = lb.ids.get(lb.ix).and_then(|id| self.lb_source(*id)) else { return };
+        let fmt = match &source {
+            ViewerSource::File(path) => image::ImageReader::open(path).ok().and_then(|r| r.with_guessed_format().ok()).and_then(|r| r.format()),
+            ViewerSource::Rendered(_) => Some(image::ImageFormat::Png),
+        };
         let ext = fmt.and_then(|f| f.extensions_str().first().copied()).unwrap_or("png");
         let dir = dirs::download_dir().or_else(dirs::home_dir).unwrap_or_default();
         let rx = cx.prompt_for_new_path(&dir, Some(&format!("image.{ext}")));
@@ -1312,9 +1373,9 @@ impl Editor {
         cx.spawn(async move |_, _| {
             let Ok(Ok(Some(dest))) = rx.await else { return };
             bg.spawn(async move {
-                if crop == FULL {
-                    let _ = std::fs::copy(&path, &dest);
-                } else if let Ok(im) = image::ImageReader::open(&path).and_then(|r| r.with_guessed_format()).map_err(anyhow::Error::from).and_then(|r| Ok(r.decode()?)) {
+                if crop == FULL && let ViewerSource::File(path) = &source {
+                    let _ = std::fs::copy(path, &dest);
+                } else if let Some(im) = source.decode() {
                     let (w, h) = (im.width() as f32, im.height() as f32);
                     let (x, y) = ((crop[0] * w).round() as u32, (crop[1] * h).round() as u32);
                     let (cw, ch) = (((crop[2] - crop[0]) * w).round().max(1.) as u32, ((crop[3] - crop[1]) * h).round().max(1.) as u32);
@@ -1331,6 +1392,7 @@ impl Editor {
         let Some(lb) = &mut self.img.lightbox else { return };
         let Some(&id) = lb.ids.get(lb.ix) else { return };
         let rot = lb.rot;
+        let opened = lb.opened;
         if rot == 0 || lb.rotated.as_ref().is_some_and(|(r, i, _)| *r == rot && *i == id) {
             return;
         }
@@ -1338,12 +1400,12 @@ impl Editor {
             let _ = window.drop_image(old);
         }
         lb.rotated = Some((rot, id, None));
-        let Some((path, crop, _, _)) = self.lb_source(id) else { return };
-        let task = cx.background_executor().spawn(async move { decode_rotated(&path, crop, rot) });
+        let Some((source, crop, _, _)) = self.lb_source(id) else { return };
+        let task = cx.background_executor().spawn(async move { decode_rotated(source, crop, rot) });
         cx.spawn_in(window, async move |this, cx| {
             let Some(im) = task.await else { return };
             let _ = this.update_in(cx, |e, window, cx| match &mut e.img.lightbox {
-                Some(lb) if matches!(lb.rotated, Some((r, i, None)) if r == rot && i == id) => {
+                Some(lb) if lb.opened == opened && matches!(lb.rotated, Some((r, i, None)) if r == rot && i == id) => {
                     lb.rotated = Some((rot, id, Some(im)));
                     cx.notify();
                 }
@@ -1382,6 +1444,7 @@ impl Editor {
             if let Some((_, _, Some(im))) = lb.rotated.take() {
                 let _ = window.drop_image(im);
             }
+            if let Some((image, _, _)) = lb.rendered.take() { let _ = window.drop_image(image); }
             self.img.lightbox = None;
             self.img.chrome_task = None;
             return;
@@ -1417,7 +1480,7 @@ impl Editor {
     pub(super) fn lightbox_el(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let lb = self.img.lightbox.as_ref()?;
         let id = *lb.ids.get(lb.ix)?;
-        let (path, crop, _, _) = self.lb_source(id)?;
+        let (source, crop, _, _) = self.lb_source(id)?;
         let (w, h) = self.lb_size()?;
         let (vw, vh) = lb.vp;
         let fade = match lb.closing {
@@ -1441,7 +1504,7 @@ impl Editor {
                 .overflow_hidden()
                 .bg(gpui::white())
                 .child(
-                    img(path)
+                    img(source.image())
                         .absolute()
                         .left(px(-crop[0] * fw))
                         .top(px(-crop[1] * fh))
@@ -1787,8 +1850,8 @@ fn download(url: &str, dest: &Path) -> bool {
 }
 
 /// Crops and turns the image `rot` quarter turns counter-clockwise (BGRA).
-fn decode_rotated(path: &Path, crop: [f32; 4], rot: u8) -> Option<Arc<RenderImage>> {
-    let im = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
+fn decode_rotated(source: ViewerSource, crop: [f32; 4], rot: u8) -> Option<Arc<RenderImage>> {
+    let im = source.decode()?;
     let (w, h) = (im.width() as f32, im.height() as f32);
     let im = if crop == FULL {
         im
@@ -1897,4 +1960,30 @@ pub(crate) fn localize_pasted_images(blocks: &mut Vec<Block>) {
             Err(_) => false,
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ViewerSource, decode_rotated, FULL};
+    use gpui::RenderImage;
+    use std::sync::Arc;
+
+    #[test]
+    fn rendered_preview_keeps_colors_when_downloaded_and_rotated() {
+        let bgra = image::RgbaImage::from_raw(2, 1, vec![0, 0, 255, 255, 255, 0, 0, 128]).unwrap();
+        let rendered = Arc::new(RenderImage::new(vec![image::Frame::new(bgra)]));
+        let rgba = ViewerSource::Rendered(rendered.clone()).decode().unwrap();
+        assert_eq!(rgba.to_rgba8().into_raw(), vec![255, 0, 0, 255, 0, 0, 255, 128]);
+        let mut png = std::io::Cursor::new(vec![]);
+        rgba.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        assert_eq!(image::load_from_memory(png.get_ref()).unwrap().to_rgba8(), rgba.to_rgba8());
+        let rotated = decode_rotated(ViewerSource::Rendered(rendered), FULL, 1).unwrap();
+        assert_eq!(rotated.size(0).width.0, 1); assert_eq!(rotated.size(0).height.0, 2);
+        assert_eq!(rotated.as_bytes(0).unwrap(), &[255, 0, 0, 128, 0, 0, 255, 255]);
+        let path = std::env::temp_dir().join(format!("quiet-md-viewer-test-{}.png", uuid::Uuid::new_v4()));
+        rgba.save(&path).unwrap();
+        let file_rotated = decode_rotated(ViewerSource::File(path.clone()), FULL, 1).unwrap();
+        let _ = std::fs::remove_file(path);
+        assert_eq!(file_rotated.as_bytes(0), rotated.as_bytes(0));
+    }
 }

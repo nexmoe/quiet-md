@@ -2,6 +2,7 @@ mod button;
 mod caption;
 mod catalogue;
 mod countdown;
+mod diagram;
 mod cover;
 pub use fdl_core::editor::core;
 mod drag;

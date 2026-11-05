@@ -95,7 +95,9 @@ pub use smol::Timer;
 pub use style::*;
 pub use styled::*;
 pub use subscription::*;
-use svg_renderer::*;
+// quiet.md: diagrams rasterize at the window's device scale and their current zoom.
+pub use svg_renderer::{SvgRenderer, SvgSize};
+use svg_renderer::{RenderSvgParams, SMOOTH_SVG_SCALE_FACTOR};
 pub(crate) use tab_stop::*;
 pub use taffy::{AvailableSpace, LayoutId};
 #[cfg(any(test, feature = "test-support"))]

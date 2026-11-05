@@ -708,6 +708,7 @@ impl CursorStyle {
             CursorStyle::ClosedHand => &["closedhand", "grabbing", "hand2"],
             CursorStyle::OpenHand => &["openhand", "grab", "hand1"],
             CursorStyle::PointingHand => &["pointer", "hand", "hand2"],
+            CursorStyle::ZoomIn => &["zoom-in"], // quiet.md
             CursorStyle::ResizeLeft => &["w-resize", "left_side"],
             CursorStyle::ResizeRight => &["e-resize", "right_side"],
             CursorStyle::ResizeLeftRight => &["ew-resize", "sb_h_double_arrow"],

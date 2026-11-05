@@ -16,6 +16,12 @@ FDL_BIN=/other/quiet_md python3 tools/harness/run.py my.txt
 
 ## 截图回归
 
+文本绘图的专项检查：`python3 tools/harness/text_drawing.py`。它使用临时文档库和模拟剪贴板，操作全屏源码编辑、撤销 / 重做、错误恢复、三种视图、分隔线，以及点击图表打开图片预览后的缩放、旋转和拖动，并检查保存后重新打开的源码与分隔线设置。
+
+`python3 tools/harness/text_drawing_layout.py`（需要 Pillow）比较绘图上下正文锚点的像素位置：覆盖部分露出的绘图、空白源码区点击、长源码粘贴、预览加载、撤销 / 重做、语法错误、清空源码和关闭图片预览，防止绘图内部操作使页面跳动。
+
+`python3 tools/harness/text_drawing_atlas.py`（需要 Pillow）在同一页面显示两张图表，反复打开和关闭第一张的图片预览，逐像素确认另一张始终保持原样，防止共享 Metal 纹理被重复释放后图片消失或崩溃。
+
 ```sh
 python3 tools/harness/compare.py tools/harness/examples/menus.txt <旧版二进制> target/release/quiet_md
 ```

@@ -119,6 +119,7 @@ fn is_block_tag(name: &str) -> bool {
             | "checkbox" | "blockquote" | "hr" | "pre" | "img" | "table" | "grid" | "column"
             | "callout" | "whiteboard" | "source" | "figure" | "sheet" | "task" | "chat_card"
             | "bookmark" | "html5-block" | "okr" | "sub-page-list" | "countdown"
+            | "text-drawing" | "mermaid" | "add-ons" | "add_ons" | "text-chart" | "isv" | "readonly-block"
     )
 }
 
@@ -228,6 +229,21 @@ fn parse_block(e: &Element, out: &mut Vec<Block>) {
                 time: e.attr("time").unwrap_or_default().to_string(),
             };
             Block::new(BlockKind::Countdown(cd), RichText::default())
+        }
+        "text-drawing" | "mermaid" | "text-chart" if e.attr("type").is_none_or(|t| t == "mermaid") => {
+            let mut d = e.attr("record").and_then(crate::diagram::TextDiagram::from_record)
+                .unwrap_or_else(|| crate::diagram::TextDiagram::new(code_text(&e.children)));
+            if !e.children.is_empty() { d.source = code_text(&e.children); }
+            if let Some(view) = e.attr("view") { d.view = crate::diagram::DiagramView::parse(view); }
+            if let Some(theme) = e.attr("theme") { d.theme = theme.into(); }
+            Block::new(BlockKind::Diagram(d), RichText::default())
+        }
+        "add-ons" | "add_ons" | "isv" | "readonly-block"
+            if ["component-type-id", "component_type_id", "component-id"].iter().any(|k| e.attr(k) == Some(crate::diagram::COMPONENT_ID))
+                && e.attr("record").and_then(crate::diagram::TextDiagram::from_record).is_some() => {
+            let mut d = crate::diagram::TextDiagram::from_record(e.attr("record").unwrap()).unwrap();
+            d.envelope = Some((e.name.clone(), e.attrs.iter().filter(|(k, _)| k != "record").cloned().collect()));
+            Block::new(BlockKind::Diagram(d), RichText::default())
         }
         "pre" => {
             let code_el = e.children.iter().find_map(|n| match n {
@@ -836,6 +852,24 @@ fn write_block(b: &Block, s: &mut String, depth: usize) {
             s.push_str("><code>");
             s.push_str(&esc(&b.text.text));
             s.push_str("</code></pre>\n");
+        }
+        BlockKind::Diagram(d) => {
+            if let Some((tag, attrs)) = &d.envelope {
+                s.push_str(&format!("<{tag}"));
+                for (k, v) in attrs {
+                    let value = if k == "align" { match b.align { Align::Left => "left", Align::Center => "center", Align::Right => "right" }.into() } else { v.clone() };
+                    s.push_str(&format!(" {k}=\"{}\"", esc_attr(&value)));
+                }
+                if !attrs.iter().any(|(k, _)| k == "align") { s.push_str(&al); }
+                s.push_str(&format!(" record=\"{}\"", esc_attr(&d.record_json())));
+                s.push_str("/>\n");
+            } else {
+                s.push_str(&format!("<text-drawing view=\"{}\" theme=\"{}\"{al}", d.view.token(), esc_attr(&d.theme)));
+                if !d.record.is_empty() { s.push_str(&format!(" record=\"{}\"", esc_attr(&d.record_json()))); }
+                s.push('>');
+                s.push_str(&esc(&d.source));
+                s.push_str("</text-drawing>\n");
+            }
         }
         BlockKind::Quote => {
             s.push_str(&format!("<blockquote{}>\n", bg_attr(b)));

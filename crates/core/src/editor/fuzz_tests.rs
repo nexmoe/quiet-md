@@ -116,7 +116,7 @@ fn step(c: &mut Core, rng: &mut Rng) -> String {
     }
     let us = c.units();
     let any = |rng: &mut Rng| rng.pick(&us).id;
-    match rng.below(23) {
+    match rng.below(25) {
         0..=2 => {
             let s = *rng.pick(TEXTS);
             c.insert_text(s);
@@ -211,6 +211,28 @@ fn step(c: &mut Core, rng: &mut Rng) -> String {
         }
         20 => table_step(c, rng),
         21 => object_step(c, rng),
+        22 => {
+            c.insert_diagram(crate::diagram::TextDiagram::new(*rng.pick(TEXTS)));
+            "insert_diagram".into()
+        }
+        23 => {
+            let mut ids = vec![];
+            c.doc.for_each_block(|b| if matches!(b.kind, BlockKind::Diagram(_)) { ids.push(b.id); });
+            if !ids.is_empty() {
+                let id = *rng.pick(&ids);
+                let BlockKind::Diagram(mut d) = c.block(id).unwrap().kind.clone() else { unreachable!() };
+                d.source = rng.pick(TEXTS).to_string();
+                d.view = *rng.pick(&[crate::diagram::DiagramView::Code, crate::diagram::DiagramView::Chart, crate::diagram::DiagramView::CodeChart]);
+                c.set_diagram(id, d, rng.chance(50));
+                if rng.chance(50) {
+                    c.set_diagram_layout(id, crate::diagram::DiagramLayout {
+                        zoom: 0.25 + rng.below(32) as f32 / 4., split: rng.below(101) as f32 / 100.,
+                        pan: [-(rng.below(1000) as f32), -(rng.below(1000) as f32)],
+                    }, rng.chance(50));
+                }
+            }
+            "set_diagram".into()
+        }
         _ => {
             c.trailing_line();
             "trailing_line".into()

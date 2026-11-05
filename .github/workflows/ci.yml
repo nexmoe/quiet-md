@@ -63,6 +63,20 @@ jobs:
       - name: Install toolchain
         run: rustup component add clippy
 
+      - name: Ensure WebView2 Runtime for PDF test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $roots = @("${env:ProgramFiles(x86)}/Microsoft/EdgeWebView/Application", "$env:ProgramFiles/Microsoft/EdgeWebView/Application", "$env:LOCALAPPDATA/Microsoft/EdgeWebView/Application")
+          if (!($roots | Where-Object { Test-Path $_ })) {
+            $installer = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $installer
+            $signature = Get-AuthenticodeSignature $installer
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'WebView2 installer signature is invalid' }
+            $process = Start-Process $installer -ArgumentList '/silent', '/install' -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "WebView2 installation failed: $($process.ExitCode)" }
+          }
+
       - name: Build and check with Windows SDK
         shell: pwsh
         run: |

@@ -87,6 +87,8 @@
 </table>
 <img href="https://x/y.png" width="300" caption="图" align="center"/>
 <whiteboard type="blank"/>
+<text-drawing view="codeChart" theme="default">flowchart LR
+    A[开始] --&gt; B[结束]</text-drawing>
 <sheet token="shtabc"/>
 <bookmark href="https://example.com" title="书签"/>
 <p>结尾</p>

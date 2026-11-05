@@ -59,7 +59,9 @@ impl PlatformAtlas for MetalAtlas {
 
     fn remove(&self, key: &AtlasKey) {
         let mut lock = self.0.lock();
-        let Some(id) = lock.tiles_by_key.get(key).map(|v| v.texture_id) else {
+        // quiet.md: forget every removed key, even while other images share its texture.
+        // A repeated removal must not decrement the texture's reference count again.
+        let Some(id) = lock.tiles_by_key.remove(key).map(|v| v.texture_id) else {
             return;
         };
 
@@ -81,7 +83,6 @@ impl PlatformAtlas for MetalAtlas {
 
             if texture.is_unreferenced() {
                 textures.free_list.push(id.index as usize);
-                lock.tiles_by_key.remove(key);
             } else {
                 *texture_slot = Some(texture);
             }

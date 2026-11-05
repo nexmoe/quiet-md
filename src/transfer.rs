@@ -1,4 +1,4 @@
-//! 导入 / 导出: 下载为 → PDF / Markdown (with the 导出 Markdown 设置
+//! 导入 / 导出: 下载为 → PDF / Markdown / HTML (with the 导出 Markdown 设置
 //! dialog), 打印, and 导入为文档 (主页's 上传, the app menu): local Markdown
 //! or DocxXML files picked straight away. The Word / PDF settings and
 //! 打印选项 only choose what happens to comments, so they are left out.
@@ -208,10 +208,29 @@ impl Workspace {
         .detach();
     }
 
-    /// 下载为 → PDF: the page laid out on A4 by WebKit, saved where the user picks.
+    pub fn export_html(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.close_menus();
+        cx.notify();
+        let Some(doc) = self.doc_of(id, cx) else { return };
+        let subs = self.sub_page_titles(id);
+        let path = save_path(&format!("{}.html", file_name(&doc)), cx);
+        cx.spawn(async move |this, cx| {
+            let Some(path) = path.await else { return };
+            let html = crate::html::to_html(&doc, &crate::html::Options { sub_pages: &subs });
+            let saved = cx.background_executor().spawn(async move {
+                let temp = path.with_file_name(format!(".quiet-md-export-{}.html", uuid::Uuid::new_v4()));
+                let result = std::fs::write(&temp, html).and_then(|()| std::fs::rename(&temp, &path));
+                let _ = std::fs::remove_file(temp);
+                result
+            }).await;
+            let _ = this.update(cx, |w, cx| if saved.is_err() { w.show_toast_kind(ToastKind::Error, crate::settings::text("导出失败，请重试"), cx); });
+        }).detach();
+    }
+
+    /// 下载为 → PDF: the page laid out on A4, saved where the user picks.
     pub fn export_pdf(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.close_menus();
-        if !printing::SUPPORTED {
+        if !printing::PDF_SUPPORTED {
             self.show_toast_kind(ToastKind::Error, crate::settings::text("当前系统不支持"), cx);
             return;
         }
@@ -225,15 +244,16 @@ impl Workspace {
             let Some(path) = path.await else { return };
             let _ = this.update(cx, |w, cx| w.show_toast_kind(ToastKind::Info, crate::settings::text("正在导出文档"), cx));
             let html = crate::html::to_html(&doc, &crate::html::Options { sub_pages: &subs });
-            let _ = std::fs::remove_file(&path);
-            let res = printing::run(html, name, Job::Pdf(path.clone()), view, cx).await;
-            let ok = matches!(res, Ok(true)) && path.is_file();
+            let temp = path.with_file_name(format!(".quiet-md-export-{}.pdf", uuid::Uuid::new_v4()));
+            let res = printing::run(html, name, Job::Pdf(temp.clone()), view, cx).await;
+            let ok = matches!(res, Ok(true)) && temp.is_file() && std::fs::rename(&temp, &path).is_ok();
+            let _ = std::fs::remove_file(temp);
             let _ = this.update(cx, |w, cx| {
                 if ok {
                     w.toast = None;
                     cx.notify();
                 } else {
-                    w.show_toast_kind(ToastKind::Error, crate::settings::text("导出失败，请重试"), cx);
+                    w.show_toast_kind(ToastKind::Error, res.as_ref().err().map(String::as_str).unwrap_or(crate::settings::text("导出失败，请重试")), cx);
                 }
             });
         })

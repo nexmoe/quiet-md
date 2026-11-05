@@ -127,6 +127,7 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 | `drag.rs` / `gap.rs` | 拖动 block、点击 block 间隙 |
 | `table.rs` / `grid.rs` | 表格（界面部分；操作在 core 的 `table_ops.rs`）、分栏 |
 | `image.rs` / `file.rs` / `cover.rs` | 图片、视频或文件、图标与封面 |
+| `diagram.rs` | 文本绘图：源码字段、三种视图、全屏编辑、分隔线和图片预览；Pele 的纯 Rust 移植 pele-rs 在后台生成预览 |
 | `math.rs` | 公式（katex-rs 生成 HTML，再自行排版） |
 | `link.rs` / `links.rs` | 链接面板与卡片；@文档 与引用列表 |
 | `button.rs` / `countdown.rs` / `reminder.rs` / `subpages.rs` | 按钮、倒计时、日期提醒、子页面列表 |
@@ -138,3 +139,11 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 界面支持简体中文与英文，偏好保存在 `Preferences::english`。静态文案使用 `settings::text` / `label` 的统一映射，成对文案使用 `settings::tr`，带参数的文案使用 `localized_format!`。菜单表保留稳定的原始标签，在显示时翻译；搜索同时匹配英文标签与原有关键词。输入框保留原始 placeholder，在渲染时翻译，切换语言时刷新所有窗口。
 
 用户标题、正文、附件名和已保存的按钮文字不作为翻译键；只有空标题等界面默认值随语言变化。Core 的存储诊断在应用层用已知模板翻译，保留路径、文档 ID 和系统错误原文，文档引擎不依赖界面语言。语言回归检查覆盖界面翻译键、菜单表、日期提醒，以及用户内容和诊断参数的保留。
+
+## 文本绘图
+
+`crates/core/src/diagram.rs` 保存 Mermaid 源码、三种视图、导入主题和分隔线位置，并保留飞书组件 record 的未知设置。绘图块是原子块；插入和更新经过 Core，可撤销且由随机编辑测试覆盖。Markdown 的 mermaid fence 和带源码 record 的 HTML / DocxXML add-on 可以导入；只有云端 token 的未知组件继续原样保留。界面提供源码、视图、全屏与分隔线控制，新建块为空白。旧 record 中的缩放和平移数据继续保留。
+
+应用层 `src/diagram.rs` 使用固定提交的 pele-rs（与官方 Pele 1.13.0 对齐的 Rust 移植）输出具体颜色的 SVG。`src/editor/diagram.rs` 在后台生成预览，输入去抖、丢弃过期结果并保留最后一次成功的图表；按屏幕像素密度生成有尺寸上限的 BGRA 图片，缓存不超过 64 MiB。绘图内部编辑保持外层文档滚动位置，预览加载和报错使用同一固定区域。点击图表复用 `image.rs` 的图片预览，后台从最后成功的 SVG 生成适合预览缩放的清晰图片；缩放、平移和旋转只影响预览，不修改文档。
+
+HTML / PDF 导出复用相同的 SVG 引擎。HTML 是内嵌图片和图表的独立文件。macOS 用系统 WebKit 导出 PDF；Windows 的 `printing_windows.rs` 在独立 STA 线程用系统 WebView2 Runtime、隐藏窗口和隔离临时目录导出 A4 PDF，超时或失败时保留已有目标文件。文档界面和图表渲染不访问网络、不执行 JavaScript。

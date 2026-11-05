@@ -8,9 +8,14 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 pub const SUPPORTED: bool = cfg!(target_os = "macos");
+pub const PDF_SUPPORTED: bool = cfg!(any(target_os = "macos", target_os = "windows"));
+
+#[cfg(target_os = "windows")]
+#[path = "printing_windows.rs"]
+mod native_windows;
 
 pub enum Job {
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))] // The native PDF backend is macOS-only.
+    #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
     Pdf(PathBuf),
     Print,
 }
@@ -22,7 +27,16 @@ pub async fn run(html: String, title: String, job: Job, ns_view: usize, cx: &mut
     {
         native::run(html, title, job, ns_view, cx).await
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        let _ = (title, ns_view);
+        match job {
+            Job::Pdf(path) => cx.background_executor().spawn(async move { native_windows::export(html, path) }).await
+                .map_err(|error| crate::localized_format!("PDF 导出失败：{error}", "PDF export failed: {error}")),
+            Job::Print => Err(crate::settings::text("当前系统不支持").into()),
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (html, title, job, ns_view, cx);
         Err(crate::settings::text("当前系统不支持").into())

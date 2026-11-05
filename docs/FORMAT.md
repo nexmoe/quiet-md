@@ -78,3 +78,13 @@ DocxXML 里没有、本应用自己加的写法。别的工具不认识这些写
 
 - **单元格内的尾随空格。** 如果单元格里某个 block 有嵌套子级，它文本末尾的空格或 Tab 读回时会丢失。原因：旧版本写单元格时带缩进，读入要能兼容，所以必须丢掉嵌套 block 前的空白。fuzzer 的 `round_trip` 对这一点做了相同的预处理（`trim_before_nested`）。
 - 代码块、分割线、图片等不能有子级的 block 如果在内存里带了子级，写出时这些子级会被丢掉。编辑器保证不会产生这种结构（见 ARCHITECTURE.md 的不变量）。
+
+### 文本绘图
+
+本地规范写法为 `<text-drawing view="codeChart" theme="default">Mermaid 源码</text-drawing>`。源码按 XML 文本转义，换行原样保留（单元格内使用 `&#10;`）。`view` 为 `codeChart`、`chart` 或 `code`，`theme` 保存组件主题；未知 record 设置保存在可选的 `record` JSON 属性中。
+
+`record.quiet_md` 保存本地视口：`zoom`（0.25–8）、`split`（源码栏比例，0.2–0.8）、`pan`（两个非正的逻辑像素偏移）。默认值为 `1`、`0.5`、`[0,0]`，重置后省略这些键，保留同一对象中的未知设置。分隔线的改动可以撤销和重做。当前行内图表始终适配显示；旧版 `zoom` / `pan` 数据继续保留，图片预览中的查看状态不写入文档。
+
+带 `component_type_id` / `component-type-id="blk_631fefbbae02400430b8f9f4"` 和 `record` 属性的 add-on 可识别为文本绘图。record 的 `data` 是源码，`view` 和 `theme` 是设置；写回时保留原标签、身份属性和未知 record 键。仅含远端 token 的组件无法离线恢复源码，继续按未知元素原样保留。本地 `text-drawing` 是 quiet.md 扩展，不能据此假定飞书接受该标签写入。
+
+HTML 导出在 SVG 外保留 `data-record` 和 `data-component-type-id`，并用 `data-quiet-md-envelope` 保存原组件标签与属性（JSON）；本地新建块写为 `null`。重新导入时验证此元数据，恢复源码、组件身份和原有视口元数据；普通 HTML 组件的外层属性归一化保存为 `add_ons`。

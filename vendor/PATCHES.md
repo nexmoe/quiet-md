@@ -32,6 +32,10 @@ diff -ru $R/taffy-0.9.0/src vendor/taffy/src
 | 14 | `platform/mac/text_system.rs`、`platform/mac.rs`、`platform.rs` | `font_ids_by_postscript_name` 一个名字对应多个 FontId，CoreText 回退来的字体按字形数挑出同一份字体；新增 `check_fallback_glyphs` 供测试调用（`editor::text::tests`） | 系统回退用的苹方（PingFangUI.ttc）和下载的 PingFang.ttc 都叫 `PingFangSC-Regular`，字形表不同；原来按名字查到另一份，编辑器里的中文画成错字 |
 | 15 | `platform/windows/directx_renderer.rs` | 调试构建编译着色器时，路径按宽字符串传给 `D3DCompileFromFile`（原来 `to_str().unwrap()`） | 仓库放在含中文等非 ASCII 字符的目录下也能跑调试构建 |
 | 16 | `platform/windows/clipboard.rs` | 读剪贴板时文字、图片、复制的文件一起读（原来只取第一个认得的格式）；新增位图（`CF_DIB`，转成 PNG）；复制的图片文件读成图片，其他文件的路径按行分开（原来连成一串） | 截图工具放进剪贴板的位图能粘贴，不再贴出截图文件的路径；从资源管理器复制的图片能粘贴 |
+| 17 | `gpui.rs`、`svg_renderer.rs` | 公开 `SvgRenderer` / `SvgSize` 并补齐公开 API 文档 | 文本绘图按屏幕像素密度和当前缩放在后台栅格化，避免固定 1× 图片被拉伸 |
+| 18 | `platform.rs`、`platform/{mac,windows,linux}` | 新增 `CursorStyle::ZoomIn`；macOS 15+ 和 Linux 使用系统光标，Windows 和旧 macOS 使用内置放大镜 | 文本绘图悬停时提示点击打开图片预览 |
+| 19 | `platform/mac/metal_atlas.rs` | 删除图片时立即移除对应 key，重复删除不再重复扣减共享纹理计数；与 Windows / Blade 后端一致 | 修复反复预览多张图表后其他图片消失，以及 Metal 查找已释放纹理时崩溃 |
+| 20 | `svg_renderer.rs`、`Cargo.toml` | 从 SVG 系统字体库移除 LastResort 占位字体，并启用 resvg 的 `raster-images` 功能以绘制字体内的位图字形 | 防止含 emoji 的整行标签被替换成问号方框，并实际显示 Apple Color Emoji 的彩色字形 |
 
 ## taffy 0.9.0
 

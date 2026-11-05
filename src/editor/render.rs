@@ -105,6 +105,7 @@ fn hash_block(b: &Block, orders: &rustc_hash::FxHashMap<BlockId, String>, h: &mu
     match &b.kind {
         BlockKind::Heading { level, .. } => (level, orders.get(&b.id)).hash(h),
         BlockKind::Code { wrap, .. } => wrap.hash(h),
+        BlockKind::Diagram(d) => (d.view.token(), &d.theme).hash(h),
         BlockKind::Image { src, width, height, caption, crop, .. } => {
             (src, width.map(f32::to_bits), height.map(f32::to_bits), caption.as_ref().map(String::len), crop.map(|c| c.map(f32::to_bits))).hash(h)
         }
@@ -430,6 +431,7 @@ impl R<'_> {
             BlockKind::Image { .. } => self.image(b, env, cx),
             BlockKind::SubPageList => self.sub_page_list(b, cx),
             BlockKind::Countdown(c) => self.countdown(b, c, cx),
+            BlockKind::Diagram(d) => self.diagram(b.id, d, env.width, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
             BlockKind::Table(t) => self.table(b, t, cx),
@@ -1124,9 +1126,11 @@ impl Editor {
                 list = b.map_or(&[][..], |b| b.children.as_slice());
             }
             let found = b.map(super::caption::captions_in).unwrap_or_default();
+            let diagrams = b.map(super::diagram::diagrams_in).unwrap_or_default();
             if !found.is_empty() {
                 self.ensure_captions(found, window, cx);
             }
+            if !diagrams.is_empty() { self.ensure_diagrams(diagrams, window, cx); }
         }
         let mut r = R {
             ed: self,
@@ -1297,6 +1301,7 @@ impl Editor {
         // Overlays are positioned from last frame's layout, so build them
         // before the caches are reset for this frame.
         let overlays = self.render_overlays(window, cx);
+        let diagram_full = self.diagram_fullscreen(window, cx);
         let lightbox = self.lightbox_el(window, cx);
         let toast = self.toast_el(window);
         let probes = std::mem::take(&mut *self.probes.borrow_mut());
@@ -1576,6 +1581,7 @@ impl Editor {
             .children(file_line)
             .children(catalogue)
             .children(overlays)
+            .children(diagram_full)
             .children(col_overlay)
             .children(table_overlay)
             .children(block_overlay)
@@ -1748,6 +1754,7 @@ pub(super) fn block_feishu(&self, b: &Block, siblings: &[Block], idx: usize, env
             BlockKind::Image { .. } => self.image(b, env, cx),
             BlockKind::SubPageList => self.sub_page_list(b, cx),
             BlockKind::Countdown(c) => self.countdown(b, c, cx),
+            BlockKind::Diagram(d) => self.diagram(b.id, d, env.width, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
             BlockKind::Table(t) => self.table(b, t, cx),

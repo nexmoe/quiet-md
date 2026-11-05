@@ -4,14 +4,14 @@
 use crate::editor::text::{LayoutCache, RichTextElement, TextSpec};
 use crate::model::{Align, BlockId, RichText};
 use crate::theme::Theme;
-use gpui::*;
+use gpui::{prelude::FluentBuilder, *};
 use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};
 use unicode_segmentation::UnicodeSegmentation;
 
 actions!(
     field,
-    [Backspace, Delete, Left, Right, SelectLeft, SelectRight, Home, End, SelectAll, Copy, Cut, Paste, Submit, ShiftSubmit, Cancel, Up, Down, Swallow, Tab, ShiftTab]
+    [Backspace, Delete, Left, Right, SelectLeft, SelectRight, Home, End, SelectAll, Copy, Cut, Paste, Submit, ShiftSubmit, Cancel, Up, Down, Swallow, Undo, Redo, Tab, ShiftTab]
 );
 
 pub fn bind_keys(cx: &mut App) {
@@ -40,8 +40,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-n", Down, c),
         KeyBinding::new("tab", Tab, c),
         KeyBinding::new("shift-tab", ShiftTab, c),
-        KeyBinding::new("cmd-z", Swallow, c),
-        KeyBinding::new("cmd-shift-z", Swallow, c),
+        KeyBinding::new("cmd-z", Undo, c),
+        KeyBinding::new("cmd-shift-z", Redo, c),
     ]);
 }
 
@@ -62,6 +62,8 @@ pub enum TextFieldEvent {
     /// Tab / Shift+Tab when `tab_events` is set (moving between fields).
     Tab,
     ShiftTab,
+    Undo,
+    Redo,
 }
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(u64::MAX - 1_000_000);
@@ -77,6 +79,8 @@ pub struct TextField {
     id: BlockId,
     pub size: f32,
     pub line_height: f32,
+    /// Minimum clickable height for a multiline editor.
+    pub min_height: f32,
     pub placeholder_color: Hsla,
     pub color: Hsla,
     pub align: Align,
@@ -85,6 +89,8 @@ pub struct TextField {
     /// Enter and pasted newlines insert line breaks; Up/Down move by line.
     pub multiline: bool,
     pub mono: bool,
+    /// Delegate undo/redo to the owner of a persisted multiline field.
+    pub history_events: bool,
     /// Longest text in chars (longer input is cut off).
     pub max_len: Option<usize>,
     /// Only ASCII digits get in (number inputs).
@@ -112,6 +118,7 @@ impl TextField {
         TextField {
             focus: cx.focus_handle(),
             text: String::new(),
+            history_events: false,
             sel: 0..0,
             reversed: false,
             marked: None,
@@ -121,6 +128,7 @@ impl TextField {
             // macOS's control text: 13pt.
             size: 13.,
             line_height: 20.,
+            min_height: 0.,
             placeholder_color: Theme::text_placeholder(),
             color: Theme::text(),
             align: Align::Left,
@@ -280,7 +288,8 @@ impl TextField {
     }
 
     fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(t) = cx.read_from_clipboard().and_then(|i| i.text()) {
+        let fake = crate::clipboard::FAKE_CLIPBOARD.lock().ok().and_then(|f| f.as_ref().map(|(_, t)| t.clone()));
+        if let Some(t) = fake.or_else(|| cx.read_from_clipboard().and_then(|i| i.text())) {
             self.replace(self.sel.clone(), &t, cx);
         }
     }
@@ -305,7 +314,16 @@ impl TextField {
         }
     }
 
+    fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
+        if self.history_events { cx.emit(TextFieldEvent::Undo); }
+    }
+
+    fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
+        if self.history_events { cx.emit(TextFieldEvent::Redo); }
+    }
+
     fn tab(&mut self, _: &Tab, _: &mut Window, cx: &mut Context<Self>) {
+        if self.history_events && self.multiline && self.mono { return self.replace(self.sel.clone(), "    ", cx); }
         match (self.tab_events, self.multiline) {
             (true, _) => cx.emit(TextFieldEvent::Tab),
             (false, false) => cx.propagate(),
@@ -314,6 +332,11 @@ impl TextField {
     }
 
     fn shift_tab(&mut self, _: &ShiftTab, _: &mut Window, cx: &mut Context<Self>) {
+        if self.history_events && self.multiline && self.mono {
+            let start = self.text[..self.sel.start].rfind('\n').map_or(0, |i| i + 1);
+            let n = self.text[start..].chars().take(4).take_while(|c| *c == ' ').count();
+            if n > 0 { return self.replace(start..start + n, "", cx); }
+        }
         match (self.tab_events, self.multiline) {
             (true, _) => cx.emit(TextFieldEvent::ShiftTab),
             (false, false) => cx.propagate(),
@@ -526,6 +549,7 @@ impl Render for TextField {
             .relative()
             .flex_1()
             .min_w_0()
+            .when(self.min_height > 0., |d| d.min_h(px(self.min_height)))
             .overflow_hidden()
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
@@ -545,6 +569,8 @@ impl Render for TextField {
             .on_action(cx.listener(Self::up))
             .on_action(cx.listener(Self::down))
             .on_action(cx.listener(Self::swallow))
+            .on_action(cx.listener(Self::undo))
+            .on_action(cx.listener(Self::redo))
             .on_action(cx.listener(Self::tab))
             .on_action(cx.listener(Self::shift_tab))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_down))

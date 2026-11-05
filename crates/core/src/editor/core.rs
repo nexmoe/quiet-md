@@ -340,6 +340,7 @@ fn doc_bytes(doc: &Document) -> usize {
         if let BlockKind::Raw { xml, .. } = &b.kind {
             n += xml.len();
         }
+        if let BlockKind::Diagram(d) = &b.kind { n += d.source.len() + d.record_json().len(); }
     });
     n
 }
@@ -360,6 +361,7 @@ pub enum EditKind {
     Delete,
     /// Typing in an equation's editor.
     Equation,
+    DiagramLayout,
     Other,
 }
 
@@ -1942,6 +1944,29 @@ impl Core {
             self.sel = Selection::caret(Pos::new(id, self.len_of(id)));
             self.fix_selection();
         }
+    }
+
+    pub fn insert_diagram(&mut self, diagram: crate::diagram::TextDiagram) -> BlockId {
+        let id = self.insert_block(Block::new(BlockKind::Diagram(diagram), RichText::default()));
+        let p = self.ensure_paragraph_after(id);
+        self.sel = Selection::caret(Pos::new(p, 0));
+        id
+    }
+
+    pub fn set_diagram(&mut self, id: BlockId, diagram: crate::diagram::TextDiagram, typing: bool) -> bool {
+        if !self.block(id).is_some_and(|b| matches!(&b.kind, BlockKind::Diagram(d) if *d != diagram)) { return false }
+        self.checkpoint(if typing { EditKind::Typing } else { EditKind::Other });
+        if let Some(b) = self.block_mut(id) { b.kind = BlockKind::Diagram(diagram); }
+        true
+    }
+
+    pub fn set_diagram_layout(&mut self, id: BlockId, layout: crate::diagram::DiagramLayout, coalesce: bool) -> bool {
+        let Some(BlockKind::Diagram(mut d)) = self.block(id).map(|b| b.kind.clone()) else { return false };
+        if d.layout() == layout.normalized() { return false }
+        d.set_layout(layout);
+        self.checkpoint(if coalesce { EditKind::DiagramLayout } else { EditKind::Other });
+        if let Some(b) = self.block_mut(id) { b.kind = BlockKind::Diagram(d); }
+        true
     }
 
     /// Insert a new block after the caret block (or replace it when it's an

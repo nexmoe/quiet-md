@@ -1,0 +1,11 @@
+{
+  "block_type_id": "blk_631fefbbae02400430b8f9f4",
+  "data": {
+    "data": "flowchart LR\n    A[开始 Start] --> B{保存 Save?}\n    B -->|是 Yes| C[完成 Done]\n    B -->|否 No| A",
+    "theme": "default",
+    "view": "codeChart"
+  },
+  "size": {
+    "height": 280
+  }
+}

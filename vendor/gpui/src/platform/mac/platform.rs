@@ -981,6 +981,7 @@ impl Platform for MacPlatform {
                 CursorStyle::ClosedHand => msg_send![class!(NSCursor), closedHandCursor],
                 CursorStyle::OpenHand => msg_send![class!(NSCursor), openHandCursor],
                 CursorStyle::PointingHand => msg_send![class!(NSCursor), pointingHandCursor],
+                CursorStyle::ZoomIn => zoom_in_cursor(), // quiet.md: native on macOS 15+.
                 CursorStyle::ResizeLeftRight => msg_send![class!(NSCursor), resizeLeftRightCursor],
                 CursorStyle::ResizeUpDown => msg_send![class!(NSCursor), resizeUpDownCursor],
                 CursorStyle::ResizeLeft => msg_send![class!(NSCursor), resizeLeftCursor],
@@ -1710,4 +1711,34 @@ mod tests {
         platform.0.lock().pasteboard = unsafe { NSPasteboard::pasteboardWithUniqueName(nil) };
         platform
     }
+}
+
+// quiet.md: the public zoom cursor is available from macOS 15; keep macOS 13/14 working.
+fn zoom_in_cursor() -> id {
+    unsafe {
+        let available: BOOL = msg_send![class!(NSCursor), respondsToSelector: sel!(zoomInCursor)];
+        if available == YES { return msg_send![class!(NSCursor), zoomInCursor]; }
+    }
+    thread_local! {
+        static CURSOR: id = unsafe {
+            let pixels = image::RgbaImage::from_fn(64, 64, |x, y| {
+                match crate::platform::zoom_cursor_pixel(x as f32 / 2. + 0.25, y as f32 / 2. + 0.25) {
+                    Some(white) => { let v = if white { 255 } else { 0 }; image::Rgba([v, v, v, 255]) },
+                    None => image::Rgba([0; 4]),
+                }
+            });
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(pixels).write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+            let bytes = bytes.into_inner();
+            let data = NSData::dataWithBytes_length_(nil, bytes.as_ptr().cast(), bytes.len() as NSUInteger);
+            let image: id = msg_send![class!(NSImage), alloc];
+            let image: id = msg_send![image, initWithData: data];
+            let _: () = msg_send![image, setSize: cocoa::foundation::NSSize::new(32., 32.)];
+            let cursor: id = msg_send![class!(NSCursor), alloc];
+            let cursor: id = msg_send![cursor, initWithImage: image hotSpot: cocoa::foundation::NSPoint::new(10., 10.)];
+            let _: () = msg_send![image, release];
+            cursor
+        };
+    }
+    CURSOR.with(|cursor| *cursor)
 }

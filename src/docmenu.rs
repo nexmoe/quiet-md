@@ -1,5 +1,5 @@
 //! The header "…" menu: page width, find & replace, move, pin, star,
-//! duplicate, 下载为 PDF / Markdown, 打印, document info and delete.
+//! duplicate, 下载为 PDF / Markdown / HTML, 打印, document info and delete.
 
 use crate::app::Workspace;
 use crate::settings::display_title;
@@ -253,6 +253,7 @@ impl Workspace {
                 item_top(6, 3) - 1. - PAD,
                 {
                     let pdf = id.clone();
+                    let html = id.clone();
                     popover()
                         .id("dm-download-menu")
                         .occlude()
@@ -260,8 +261,9 @@ impl Workspace {
                         .px(px(5.))
                         .py(px(PAD))
                         .child(recorder())
-                        .when(crate::printing::SUPPORTED, |d| d.child(sub_item("dm-pdf", "PDF").on_click(cx.listener(move |w, _, window, cx| w.export_pdf(&pdf, window, cx)))))
+                        .when(crate::printing::PDF_SUPPORTED, |d| d.child(sub_item("dm-pdf", "PDF").on_click(cx.listener(move |w, _, window, cx| w.export_pdf(&pdf, window, cx)))))
                         .child(sub_item("dm-md", "Markdown").on_click(cx.listener(move |w, _, _, cx| w.open_export_md(&id, cx))))
+                        .child(sub_item("dm-html", "HTML").on_click(cx.listener(move |w, _, _, cx| w.export_html(&html, cx))))
                         .into_any_element()
                 },
             )),

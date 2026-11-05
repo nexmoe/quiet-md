@@ -751,6 +751,8 @@ pub enum BlockKind {
     SubPageList,
     /// 倒计时 (an add-on block; `<countdown …/>` is ours).
     Countdown(Countdown),
+    /// Mermaid text drawing, with the source and the widget's view settings.
+    Diagram(crate::diagram::TextDiagram),
     /// 视频或文件 (`<source>`, or `<figure view-type><source/></figure>`).
     File(FileBlock),
     /// Any element we don't model; kept verbatim for round-tripping.
@@ -1000,6 +1002,10 @@ impl Document {
         let mut out = String::new();
         fn walk(blocks: &[Block], out: &mut String) {
             for b in blocks {
+                if let BlockKind::Diagram(d) = &b.kind {
+                    if !out.is_empty() { out.push('\n'); }
+                    out.push_str(&d.source);
+                }
                 if !b.text.is_empty() {
                     if !out.is_empty() {
                         out.push('\n');

@@ -88,6 +88,11 @@ impl Writer<'_> {
                 let fence = if b.text.text.contains("```") { "````" } else { "```" };
                 format!("{fence}{lang}\n{}\n{fence}", b.text.text)
             }
+            BlockKind::Diagram(d) => {
+                let n = d.source.lines().map(|s| s.chars().take_while(|c| *c == '`').count()).max().unwrap_or(0).max(2) + 1;
+                let fence = "`".repeat(n);
+                format!("{fence}mermaid\n{}\n{fence}", d.source)
+            }
             BlockKind::Quote => indent(&self.blocks(&b.children), "> "),
             BlockKind::Callout { emoji, .. } => {
                 let body = self.blocks(&b.children);
@@ -145,7 +150,10 @@ impl Writer<'_> {
 fn table(t: &Table) -> String {
     let cols = t.rows.iter().map(|r| r.len()).max().unwrap_or(0).max(1);
     let cell = |c: &TableCell| {
-        let parts: Vec<String> = c.blocks.iter().map(|b| inline(&b.text)).filter(|s| !s.is_empty()).collect();
+        let parts: Vec<String> = c.blocks.iter().map(|b| match &b.kind {
+            BlockKind::Diagram(d) => escape(&d.source).replace('\n', "<br>"),
+            _ => inline(&b.text),
+        }).filter(|s| !s.is_empty()).collect();
         parts.join("<br>").replace('|', "\\|")
     };
     let row = |r: &Vec<TableCell>| {

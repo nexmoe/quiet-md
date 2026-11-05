@@ -91,9 +91,9 @@ A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character doc
 
 ## Features
 
-- **Editing**: headings, ordered and bulleted lists, to-dos, quotes, code blocks with syntax highlighting, LaTeX math, tables (with merged cells), callouts, columns, images, attachments and covers. Markdown shortcuts such as `#`, `-`, `[]` and `>`, plus a `/` slash menu.
+- **Editing**: headings, ordered and bulleted lists, to-dos, quotes, code blocks with syntax highlighting, LaTeX math, Mermaid text diagrams, tables (with merged cells), callouts, columns, images, attachments and covers. Markdown shortcuts such as `#`, `-`, `[]` and `>`, plus a `/` slash menu.
 - **Organizing**: a document tree, pinning, favorites, full-text search and a trash.
-- **Import and export**: import Markdown and Feishu (Lark) DocxXML; export Markdown and PDF, or print directly. Pasting from Feishu or a web page keeps the structure.
+- **Import and export**: import Markdown and Feishu (Lark) DocxXML; export Markdown, self-contained HTML and PDF, or print on macOS. Pasting from Feishu or a web page keeps the structure. PDF export on Windows uses the installed Microsoft Edge WebView2 Runtime.
 - **Shortcuts**: press `⌘ /` (`Ctrl+/` on Windows) to see them all. Every one can be rebound. On Windows, Ctrl stands in for ⌘ and Alt for ⌥; the app and the Getting started guides show the keys for your system.
 - **Themes**: four built-in styles — Craft, Feishu, Notion and Obsidian — each with a dark variant, or write your own in CSS; see [docs/THEMES.md](docs/THEMES.md).
 

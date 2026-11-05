@@ -111,6 +111,23 @@ pub(crate) fn windows_credentials_target_name(url: &str) -> String {
 }
 
 pub(crate) fn load_cursor(style: CursorStyle) -> Option<HCURSOR> {
+    // quiet.md: Win32 has no predefined zoom-in cursor.
+    if style == CursorStyle::ZoomIn {
+        static ZOOM: OnceLock<SafeCursor> = OnceLock::new();
+        return Some(**ZOOM.get_or_init(|| {
+            let mut and = [255u8; 128];
+            let mut xor = [0u8; 128];
+            for y in 0..32 { for x in 0..32 {
+                if let Some(white) = crate::platform::zoom_cursor_pixel(x as f32 + 0.5, y as f32 + 0.5) {
+                    let (i, bit) = (y * 4 + x / 8, 0x80 >> (x % 8));
+                    and[i] &= !bit;
+                    if white { xor[i] |= bit; }
+                }
+            } }
+            unsafe { CreateCursor(None, 10, 10, 32, 32, and.as_ptr().cast(), xor.as_ptr().cast()) }
+                .log_err().unwrap_or_default().into()
+        }));
+    }
     static ARROW: OnceLock<SafeCursor> = OnceLock::new();
     static IBEAM: OnceLock<SafeCursor> = OnceLock::new();
     static CROSS: OnceLock<SafeCursor> = OnceLock::new();

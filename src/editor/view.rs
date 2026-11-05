@@ -215,6 +215,7 @@ pub struct Editor {
     pub(super) tables: super::table::TableUi,
     /// Name / description fields of code blocks and images (`caption.rs`).
     pub(super) captions: HashMap<BlockId, (Entity<TextField>, Vec<Subscription>)>,
+    pub(super) diagrams: super::diagram::DiagramUi,
     pub(super) img: super::image::ImageUi,
     pub(super) cd: super::countdown::CdUi,
     pub(super) btn: super::button::BtnUi,
@@ -424,6 +425,7 @@ impl Editor {
             col_anim: HashMap::default(),
             tables: Default::default(),
             captions: HashMap::new(),
+            diagrams: Default::default(),
             img: super::image::ImageUi::new(cx),
             file: super::file::FileUi::new(),
             code_folded: Default::default(),
@@ -440,6 +442,7 @@ impl Editor {
             _subs: subs,
         };
         e.cat_seen.1 = e.core.sel.head.block;
+        e._subs.push(cx.on_release(|e, cx| { e.diagrams.release(cx); e.img.release(cx); }));
         e.restart_blink(window, cx);
         e
     }
@@ -858,6 +861,14 @@ impl Editor {
             return self.changed(window, cx);
         }
         match kind {
+            SlashKind::Diagram => {
+                let diagram = fdl_core::diagram::TextDiagram::default();
+                let nid = self.core.insert_diagram(diagram.clone());
+                self.changed(window, cx);
+                self.ensure_diagrams(vec![(nid, diagram)], window, cx);
+                if let Some(f) = self.diagrams.fields.get(&nid) { window.focus(&f.0.focus_handle(cx)); }
+                return;
+            }
             SlashKind::Formula => {
                 if let Some(p) = self.core.insert_equation("") {
                     self.changed(window, cx);
@@ -1699,6 +1710,7 @@ impl Editor {
         if !self.guard(window, cx) {
             return;
         }
+        if self.diagram_escape(cx) { return }
         if self.cropping() {
             return self.cancel_crop(cx);
         }
@@ -1878,8 +1890,11 @@ impl Editor {
         self.cancel_crop(cx);
         self.slash = None;
         self.marked = None;
+        let drawing = self.core.sel.head.block;
+        let in_drawing = self.core.block(drawing).is_some_and(|b| matches!(b.kind, BlockKind::Diagram(_)));
         self.core.undo();
         self.changed(window, cx);
+        if in_drawing && self.core.sel.head.block == drawing && self.core.block(drawing).is_some_and(|b| matches!(b.kind, BlockKind::Diagram(_))) { self.autoscroll = false; }
     }
 
     fn on_redo(&mut self, _: &k::Redo, window: &mut Window, cx: &mut Context<Self>) {
@@ -1889,8 +1904,11 @@ impl Editor {
         self.cancel_crop(cx);
         self.slash = None;
         self.marked = None;
+        let drawing = self.core.sel.head.block;
+        let in_drawing = self.core.block(drawing).is_some_and(|b| matches!(b.kind, BlockKind::Diagram(_)));
         self.core.redo();
         self.changed(window, cx);
+        if in_drawing && self.core.sel.head.block == drawing && self.core.block(drawing).is_some_and(|b| matches!(b.kind, BlockKind::Diagram(_))) { self.autoscroll = false; }
     }
 
     fn on_save(&mut self, _: &k::Save, window: &mut Window, cx: &mut Context<Self>) {

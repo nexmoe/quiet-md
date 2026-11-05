@@ -3,6 +3,7 @@
 //! and Markdown / HTML import plus Markdown export.
 
 pub mod docxml;
+pub mod diagram;
 pub mod editor;
 pub mod emoji;
 pub mod lang;

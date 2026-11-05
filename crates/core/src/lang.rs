@@ -36,6 +36,7 @@ pub const LANGS: &[(&str, &str, &[&str])] = &[
     ("JSON", "json", &[]),
     ("Java", "java", &["jsp"]),
     ("JavaScript", "javascript", &["js", "jsx"]),
+    ("Mermaid", "mermaid", &[]),
     ("Julia", "julia", &[]),
     ("Kotlin", "kotlin", &["kt"]),
     ("LaTeX", "latex", &["math", "tex"]),
