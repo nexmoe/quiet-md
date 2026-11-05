@@ -290,15 +290,13 @@ fn parse_block(e: &Element, out: &mut Vec<Block>) {
                 .collect();
             Block::new(BlockKind::Grid, RichText::default()).with_children(cols)
         }
-        "html-block" if e.attr("record").and_then(crate::html_block::HtmlBlock::from_record).is_some() => {
-            Block::new(BlockKind::Html(crate::html_block::HtmlBlock::from_record(e.attr("record").unwrap()).unwrap()), RichText::default())
-        }
-        "add-ons" | "add_ons" | "isv" | "readonly-block" | "html5-block"
-            if ["component-type-id", "component_type_id", "component-id"].iter().any(|k| e.attr(k) == Some(crate::html_block::COMPONENT_ID))
-                && e.children.is_empty() && e.attr("record").and_then(crate::html_block::HtmlBlock::from_record).is_some() => {
-            let mut html = crate::html_block::HtmlBlock::from_record(e.attr("record").unwrap()).unwrap();
-            html.envelope = Some((e.name.clone(), e.attrs.iter().filter(|(k, _)| k != "record").cloned().collect()));
-            Block::new(BlockKind::Html(html), RichText::default())
+        "html-block" | "add-ons" | "add_ons" | "isv" | "readonly-block" | "html5-block" => {
+            let supported = name == "html-block" || e.children.is_empty()
+                && ["component-type-id", "component_type_id", "component-id"].iter().any(|k| e.attr(k) == Some(crate::html_block::COMPONENT_ID));
+            if let Some(mut html) = supported.then(|| e.attr("record").and_then(crate::html_block::HtmlBlock::from_record)).flatten() {
+                if name != "html-block" { html.envelope = Some((e.name.clone(), e.attrs.iter().filter(|(k, _)| k != "record").cloned().collect())); }
+                Block::new(BlockKind::Html(html), RichText::default())
+            } else { Block::new(BlockKind::Raw { tag: e.name.clone(), xml: serialize_el(e) }, RichText::default()) }
         }
         "table" => Block::new(BlockKind::Table(parse_table(e)), RichText::default()),
         "source" => Block::new(BlockKind::File(file_of(e, FileView::Card)), RichText::default()),

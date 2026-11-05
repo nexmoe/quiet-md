@@ -60,6 +60,10 @@ python3 tools/harness/compare.py tools/harness/examples/menus.txt <旧版二进�
 - `FDL_NOBLINK`：光标不闪烁（`compare.py` 已设好）。
 - `FDL_RECORD_FPS`：录屏帧率，默认 30。
 
+`examples/html-regressions.txt` 覆盖快速连续输入、中文组合输入、旧状态回传以及等长源码的撤销 / 重做；日志末尾的 `qa` 各项应为 `true`。同一脚本用 `bench 40 noop` 比较短源码与约 94 KB HTML 的强制重绘开销。
+
+`examples/html-overlays.txt` 使用 `tools/harness/lib_html`，配合 `FDL_NOPARK=1 FDL_WINDOW_CAPTURE=1` 检查选区工具栏、斜杠菜单和链接卡片。浮层应完整可见，未被遮挡的网页区域应保留，关闭浮层后恢复完整预览。
+
 ## 使用规则
 
 脚本跑在用户正在使用的电脑上，必须遵守以下规则：

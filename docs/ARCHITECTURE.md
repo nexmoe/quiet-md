@@ -136,6 +136,10 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 | `emoji.rs` / `emoji_picker.rs` | 表情数据与面板 |
 | `catalogue.rs` / `find.rs` / `reading.rs` / `scrollbar.rs` / `caption.rs` | 目录、查找替换、阅读模式与信息行、滚动条、代码块名和图片描述 |
 
+HTML 块的网页状态按源码内容哈希、分隔比例、只读 / 全屏、语言和主题版本缓存，未变化的帧不重新高亮或序列化。源码 IPC 带递增 revision；撤销、重做和上传开启新的 epoch，旧回传不能覆盖新输入，输入法组合期间延后应用回传。
+
+系统 WebView 始终在 GPUI 图层上方。共用菜单、面板、工具提示和 Toast 外壳用 `html_preview::overlay_marker` 在 prepaint 时登记窗口坐标；网页宿主只保留不与浮层重叠的最大矩形，非重叠预览不变。新增浮层外壳也要登记，整页模态视图仍隐藏全部预览。
+
 ## 界面语言
 
 界面支持简体中文与英文，偏好保存在 `Preferences::english`。静态文案使用 `settings::text` / `label` 的统一映射，成对文案使用 `settings::tr`，带参数的文案使用 `localized_format!`。菜单表保留稳定的原始标签，在显示时翻译；搜索同时匹配英文标签与原有关键词。输入框保留原始 placeholder，在渲染时翻译，切换语言时刷新所有窗口。

@@ -5,9 +5,19 @@ use crate::{html_preview::Preview, model::{Block, BlockId, BlockKind}, editor_th
 use fdl_core::html_block::{HtmlBlock, MAX_BYTES};
 use gpui::{prelude::FluentBuilder, *};
 use serde_json::{Value, json};
-use std::{cell::RefCell, collections::{HashMap, HashSet}, rc::Rc};
+use std::{cell::RefCell, collections::{HashMap, HashSet}, hash::{Hash, Hasher}, rc::Rc};
 
-struct Slot { preview: Preview, nonce: String, state: String, used: u64 }
+struct Slot { preview: Preview, nonce: String, key: Option<StateKey>, epoch: u64, revision: u64, used: u64 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StateKey { source: u64, split: u32, read_only: bool, full: bool, english: bool, theme: u64, epoch: u64, revision: u64 }
+
+impl StateKey {
+    fn new(html: &HtmlBlock, read_only: bool, full: bool, epoch: u64, revision: u64) -> Self {
+        let mut hash = rustc_hash::FxHasher::default(); html.source.hash(&mut hash);
+        Self { source: hash.finish(), split: html.split().to_bits(), read_only, full, english: crate::settings::english(), theme: crate::themes::generation(), epoch, revision }
+    }
+}
 
 #[derive(Default)]
 pub(super) struct HtmlUi {
@@ -26,7 +36,7 @@ pub(super) struct HtmlUi {
 
 fn css(c: Hsla) -> String { let c = c.to_rgb(); format!("rgba({},{},{},{})", (c.r*255.).round(), (c.g*255.).round(), (c.b*255.).round(), c.a) }
 
-fn state(html: &HtmlBlock, read_only: bool, full: bool) -> String {
+fn state(html: &HtmlBlock, key: StateKey) -> String {
     let mut syntax = vec![]; let mut at = 0;
     if html.source.len() <= 100_000 {
         for (range, color, italic) in crate::highlight::spans("HTML", &html.source) {
@@ -36,7 +46,7 @@ fn state(html: &HtmlBlock, read_only: bool, full: bool) -> String {
         }
     }
     syntax.push(json!({"text":&html.source[at..]}));
-    json!({"source":html.source,"readOnly":read_only,"full":full,"english":crate::settings::english(),"split":html.split(),"maxBytes":MAX_BYTES,
+    json!({"source":html.source,"epoch":key.epoch,"revision":key.revision,"readOnly":key.read_only,"full":key.full,"english":key.english,"split":html.split(),"maxBytes":MAX_BYTES,
         "syntax":syntax,
         "colors":{"text":css(Theme::text()),"body":css(Theme::bg_body()),"panel":css(Theme::bg_overlay()),"muted":css(Theme::text_caption()),
             "border":css(Theme::code_border()),"accent":css(Theme::primary()),"hover":css(Theme::fill_hover())}}).to_string()
@@ -95,13 +105,18 @@ impl Editor {
         for (id, html) in blocks {
             self.html_blocks.clock += 1;
             let used = self.html_blocks.clock;
-            let value = state(&html, self.read_only, self.html_blocks.full == Some(id));
             if let Some(slot) = self.html_blocks.slots.borrow_mut().get_mut(&id) {
                 slot.used = used;
-                if slot.state != value { let _ = slot.preview.script(&format!("window.quietHtml&&window.quietHtml({value})")); slot.state = value; }
+                let key = StateKey::new(&html, self.read_only, self.html_blocks.full == Some(id), slot.epoch, slot.revision);
+                if slot.key != Some(key) {
+                    let value = state(&html, key);
+                    if slot.preview.script(&format!("window.quietHtml&&window.quietHtml({value})")).is_ok() { slot.key = Some(key); }
+                }
                 continue;
             }
             if self.html_blocks.errors.contains_key(&id) { continue }
+            let key = StateKey::new(&html, self.read_only, self.html_blocks.full == Some(id), 0, 0);
+            let value = state(&html, key);
             let nonce = uuid::Uuid::new_v4().to_string();
             let shell = include_str!("../html_preview.html").replace("__QUIET_NONCE__", &json!(nonce).to_string())
                 .replace("__QUIET_STATE__", &value.replace('<', "\\u003c").replace('\u{2028}', "\\u2028").replace('\u{2029}', "\\u2029"));
@@ -116,7 +131,7 @@ impl Editor {
                 Ok(preview) => {
                     let mut slots = self.html_blocks.slots.borrow_mut();
                     if slots.len() >= 8 && let Some(old) = slots.iter().filter(|(key, _)| Some(**key) != self.html_blocks.full).min_by_key(|(_, s)| s.used).map(|(id, _)| *id) { slots.remove(&old); }
-                    slots.insert(id, Slot { preview, nonce, state: value, used });
+                    slots.insert(id, Slot { preview, nonce, key: Some(key), epoch: 0, revision: 0, used });
                 }
                 Err(error) => { self.html_blocks.errors.insert(id, error); }
             }
@@ -128,14 +143,21 @@ impl Editor {
         if !self.html_blocks.slots.borrow().get(&id).is_some_and(|s| value["nonce"].as_str() == Some(s.nonce.as_str())) { return }
         let Some(BlockKind::Html(mut html)) = self.core.kind_of(id).cloned() else { return };
         match value["type"].as_str().unwrap_or("") {
-            "ready" => { if let Some(slot) = self.html_blocks.slots.borrow_mut().get_mut(&id) { slot.state.clear(); } }
+            "ready" => { if let Some(slot) = self.html_blocks.slots.borrow_mut().get_mut(&id) { slot.key = None; } }
             "source" if !self.read_only => {
                 let Some(source) = value["source"].as_str().filter(|s| s.len() <= MAX_BYTES) else { return };
+                let Some(revision) = value["revision"].as_u64() else { return };
+                {
+                    let mut slots = self.html_blocks.slots.borrow_mut(); let Some(slot) = slots.get_mut(&id) else { return };
+                    if value["epoch"].as_u64() != Some(slot.epoch) || revision <= slot.revision { return }
+                    slot.revision = revision;
+                }
                 self.core.sel = Selection::caret(Pos::new(id, 0)); html.source = source.into();
                 self.core.set_html(id, html, true); self.changed(window, cx);
             }
             "undo" | "redo" if !self.read_only => {
                 if value["type"] == "undo" { self.core.undo(); } else { self.core.redo(); }
+                self.reset_html_source();
                 self.changed(window, cx);
             }
             "split" if !self.read_only => {
@@ -181,11 +203,16 @@ impl Editor {
             let _ = this.update_in(cx, |e, window, cx| {
                 if e.read_only { return }
                 match result {
-                    Ok(source) => if let Some(BlockKind::Html(mut html)) = e.core.kind_of(id).cloned() { html.source = source; e.core.set_html(id, html, false); e.changed(window, cx); },
+                    Ok(source) => if let Some(BlockKind::Html(mut html)) = e.core.kind_of(id).cloned() { html.source = source; e.core.set_html(id, html, false); e.reset_html_source(); e.changed(window, cx); },
                     Err(error) => e.toast(crate::settings::text(error), cx),
                 }
             });
         }).detach();
+    }
+
+    pub(super) fn reset_html_source(&mut self) {
+        // External edits supersede any source messages still in flight from a webview.
+        for slot in self.html_blocks.slots.borrow_mut().values_mut() { slot.epoch += 1; slot.revision = 0; }
     }
 
     pub(super) fn html_fullscreen(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -206,9 +233,13 @@ impl Editor {
         let painted = self.html_blocks.painted.clone();
         let blocked = self.html_blocks.blocked;
         let viewport = self.html_blocks.viewport;
-        canvas(|_, _, _| (), move |bounds, _, window, _| {
+        canvas(|_, _, _| (), move |bounds, _, window, cx| {
             if blocked { return }
-            if let Some(slot) = slots.borrow().get(&id) { painted.borrow_mut().insert(id); slot.preview.place(bounds, if full { bounds } else { viewport }, window); }
+            if let Some(slot) = slots.borrow().get(&id) {
+                painted.borrow_mut().insert(id);
+                let viewport = if full { bounds } else { viewport };
+                slot.preview.place(bounds, crate::html_preview::clip(bounds.intersect(&viewport), window, cx), window);
+            }
         }).size_full().into_any_element()
     }
 }

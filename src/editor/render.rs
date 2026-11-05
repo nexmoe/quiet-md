@@ -105,7 +105,7 @@ fn hash_block(b: &Block, orders: &rustc_hash::FxHashMap<BlockId, String>, h: &mu
     match &b.kind {
         BlockKind::Heading { level, .. } => (level, orders.get(&b.id)).hash(h),
         BlockKind::Code { wrap, .. } => wrap.hash(h),
-        BlockKind::Html(html) => (html.source.len(), html.height().to_bits(), html.split().to_bits()).hash(h),
+        BlockKind::Html(html) => (&html.source, html.height().to_bits(), html.split().to_bits()).hash(h),
         BlockKind::Image { src, width, height, caption, crop, .. } => {
             (src, width.map(f32::to_bits), height.map(f32::to_bits), caption.as_ref().map(String::len), crop.map(|c| c.map(f32::to_bits))).hash(h)
         }
@@ -1303,7 +1303,7 @@ impl Editor {
         // before the caches are reset for this frame.
         let overlays = self.render_overlays(window, cx);
         let lightbox = self.lightbox_el(window, cx);
-        self.begin_html_frame(lightbox.is_some() || self.menu.is_some() || self.slash.is_some() || self.find.is_some() || self.mention.is_some() || self.cd.dialog.is_some());
+        self.begin_html_frame(lightbox.is_some() || self.cd.dialog.is_some());
         let html_full = self.html_fullscreen(window, cx);
         let toast = self.toast_el(window);
         let probes = std::mem::take(&mut *self.probes.borrow_mut());

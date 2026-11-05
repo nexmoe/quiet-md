@@ -1871,6 +1871,7 @@ impl Editor {
         self.slash = None;
         self.marked = None;
         self.core.undo();
+        self.reset_html_source();
         self.changed(window, cx);
     }
 
@@ -1882,6 +1883,7 @@ impl Editor {
         self.slash = None;
         self.marked = None;
         self.core.redo();
+        self.reset_html_source();
         self.changed(window, cx);
     }
 

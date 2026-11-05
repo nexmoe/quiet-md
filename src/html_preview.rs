@@ -2,6 +2,64 @@
 
 use gpui::{Bounds, Pixels, Window};
 
+#[derive(Default)]
+struct Overlays(std::collections::HashMap<gpui::WindowId, Vec<Bounds<Pixels>>>);
+impl gpui::Global for Overlays {}
+
+pub fn begin_frame(window: &Window, cx: &mut gpui::App) { cx.default_global::<Overlays>().0.entry(window.window_handle().window_id()).or_default().clear(); }
+
+/// Shared overlay shells register during prepaint, before any native surface is placed.
+/// New overlay shells must include this marker; menus, panels, tooltips and toasts do so centrally.
+pub fn overlay_marker() -> impl gpui::IntoElement {
+    use gpui::*;
+    canvas(|bounds, window, cx| {
+        let bounds = bounds.intersect(&window.content_mask().bounds);
+        if !bounds.is_empty() { cx.default_global::<Overlays>().0.entry(window.window_handle().window_id()).or_default().push(bounds.dilate(px(8.))); }
+    }, |_, _, _, _| {})
+        .absolute().inset_0()
+}
+
+pub fn clip(bounds: Bounds<Pixels>, window: &Window, cx: &gpui::App) -> Bounds<Pixels> {
+    let overlays = cx.try_global::<Overlays>().and_then(|o| o.0.get(&window.window_handle().window_id()));
+    clip_overlays(bounds, overlays.map_or(&[], Vec::as_slice))
+}
+
+fn clip_overlays(mut bounds: Bounds<Pixels>, overlays: &[Bounds<Pixels>]) -> Bounds<Pixels> {
+    use gpui::{point, size, px};
+    for overlay in overlays {
+        if !bounds.intersects(overlay) { continue }
+        let cut = bounds.intersect(overlay);
+        // A native host has a rectangular clip. Keep its largest uncovered rectangle.
+        bounds = [Bounds::new(bounds.origin, size(bounds.size.width, cut.top() - bounds.top())),
+            Bounds::new(point(bounds.left(), cut.bottom()), size(bounds.size.width, bounds.bottom() - cut.bottom())),
+            Bounds::new(bounds.origin, size(cut.left() - bounds.left(), bounds.size.height)),
+            Bounds::new(point(cut.right(), bounds.top()), size(bounds.right() - cut.right(), bounds.size.height))]
+            .into_iter().max_by(|a, b| (f32::from(a.size.width) * f32::from(a.size.height)).total_cmp(&(f32::from(b.size.width) * f32::from(b.size.height)))).unwrap();
+        if bounds.size.width <= px(0.) || bounds.size.height <= px(0.) { break }
+    }
+    bounds
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{point, size, px};
+    fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> { Bounds::new(point(px(x), px(y)), size(px(w), px(h))) }
+
+    #[test]
+    fn overlays_clip_only_intersecting_previews() {
+        let first = rect(370., 207., 820., 160.); let second = rect(370., 409., 820., 160.);
+        let toolbar = rect(351., 324., 439., 56.);
+        assert_eq!(clip_overlays(first, &[toolbar]), rect(370., 207., 820., 117.));
+        assert_eq!(clip_overlays(second, &[toolbar]), second);
+        assert_eq!(clip_overlays(first, &[]), first);
+        assert!(clip_overlays(first, &[first]).is_empty());
+        let slash = rect(363., 254., 261., 365.);
+        let visible = clip_overlays(first, &[toolbar, slash]);
+        assert!(!visible.is_empty()); assert!(!visible.intersects(&toolbar)); assert!(!visible.intersects(&slash));
+    }
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use native::Preview;
 

@@ -1,0 +1,37 @@
+# Run with FDL_NOPARK=1 FDL_WINDOW_CAPTURE=1 against a throwaway library.
+wait 1000
+place 120 80
+key cmd-n
+type HTML regression QA
+key enter
+type /html
+wait 300
+key enter
+wait 1000
+html 0 document.getElementById('edit').click();true
+wait 300
+html 0 window.qaState=null;window.applyState=window.quietHtml;window.quietHtml=next=>{window.qaState=structuredClone(next);window.applyState(next)};true
+html 0 window.qa={};const code=document.getElementById('code');code.focus();let i=0;const timer=setInterval(()=>{document.execCommand('insertText',false,'x');if(++i===150)clearInterval(timer)},4);true
+wait 1600
+html 0 window.qa.rapid=document.getElementById('code').value==='x'.repeat(150);JSON.stringify({rapid:window.qa.rapid,length:document.getElementById('code').value.length})
+html 0 (()=>{const code=document.getElementById('code');code.dispatchEvent(new CompositionEvent('compositionstart'));code.value+='中';code.dispatchEvent(new InputEvent('input',{isComposing:true}));setTimeout(()=>{code.value+='文';code.dispatchEvent(new InputEvent('input',{isComposing:true}));setTimeout(()=>{code.dispatchEvent(new CompositionEvent('compositionend'));code.dispatchEvent(new InputEvent('input'));},20)},4);return true})()
+wait 600
+html 0 window.qa.ime=document.getElementById('code').value==='x'.repeat(150)+'中文';JSON.stringify({ime:window.qa.ime,length:document.getElementById('code').value.length})
+html 0 (()=>{const previous=window.qaState,code=document.getElementById('code'),expected=code.value+'!';code.value=expected;code.dispatchEvent(new Event('input'));window.quietHtml(previous);window.qa.stale=code.value===expected;return JSON.stringify({stale:window.qa.stale})})()
+wait 300
+html 0 document.getElementById('code').value='<p>same A</p>';document.getElementById('code').dispatchEvent(new Event('input'));true
+wait 800
+html 0 document.getElementById('code').value='<p>same B</p>';document.getElementById('code').dispatchEvent(new Event('input'));true
+wait 400
+html 0 document.getElementById('code').dispatchEvent(new KeyboardEvent('keydown',{key:'z',metaKey:true,bubbles:true}));true
+wait 400
+html 0 window.qa.undo=document.getElementById('code').value==='<p>same A</p>';JSON.stringify({undo:window.qa.undo})
+html 0 document.getElementById('code').dispatchEvent(new KeyboardEvent('keydown',{key:'z',metaKey:true,shiftKey:true,bubbles:true}));true
+wait 400
+html 0 window.qa.redo=document.getElementById('code').value==='<p>same B</p>';JSON.stringify({redo:window.qa.redo})
+bench 40 noop
+html 0 document.getElementById('code').value='<style>div{display:none}</style><p>large</p>'+'<div class="x">large source</div>'.repeat(2850);document.getElementById('code').dispatchEvent(new Event('input'));true
+wait 800
+bench 40 noop
+html 0 JSON.stringify({qa:window.qa,bytes:document.getElementById('code').value.length})
+shot html-regressions

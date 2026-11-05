@@ -4,7 +4,7 @@ quiet.md 本体以 MIT 协议发布（见 [LICENSE](LICENSE)）。下面是随�
 
 ## Rust 依赖
 
-由 `cargo metadata` 生成，共 844 个包。许可逐项列于下表，其中也包含 MPL-2.0；本表记录依赖声明，不替代各组件的许可文本。
+由 `cargo metadata` 生成，共 844 个包。许可逐项列于下表，其中也包含 MPL-2.0；本表记录依赖声明，不替代各组件的许可文本。元数据包含所有目标平台的依赖，并非每个包都会随应用分发；例如 GTK、atk 和 cairo 属于 wry 的 Linux 后端，而 quiet.md 只在 macOS 和 Windows 上构建 wry。
 
 要重新生成这张表：`scripts/licences.sh`（从 `cargo metadata` 取全部依赖）。
 

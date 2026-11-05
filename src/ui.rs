@@ -38,6 +38,7 @@ pub fn toast_el(kind: ToastKind, msg: &SharedString, t0: std::time::Instant, win
     };
     let vw = window.viewport_size().width;
     let card = div()
+        .relative().child(crate::html_preview::overlay_marker())
         .flex()
         .items_center()
         .px(px(14.))
@@ -81,6 +82,7 @@ pub fn toast_el(kind: ToastKind, msg: &SharedString, t0: std::time::Instant, win
 /// radius 12, soft drop.
 pub fn popover() -> Div {
     div()
+        .relative().child(crate::html_preview::overlay_marker())
         .bg(crate::theme::raised(Theme::popover_bg()))
         .border_1()
         .border_color(Theme::line_border())
@@ -275,6 +277,7 @@ impl Render for Tooltip {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let lines: Vec<SharedString> = self.label.split('\n').map(|l| SharedString::from(l.to_string())).collect();
         let bubble = div()
+            .relative().child(crate::html_preview::overlay_marker())
             .px(px(10.))
             .py(px(6.))
             .rounded(px(7.))

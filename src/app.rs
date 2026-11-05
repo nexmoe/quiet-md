@@ -1213,9 +1213,11 @@ pub(crate) const HEADER_ACTIONS_H: f32 = 32.;
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::html_preview::begin_frame(window, cx);
         if let Some(ed) = &self.editor {
-            let obscured = self.view != View::Doc || self.search_open || self.doc_menu || self.doc_info.is_some() || self.row_menu.is_some()
-                || self.confirm.is_some() || self.move_dlg.is_some() || self.export_md.is_some() || self.mode_menu || self.shortcuts || self.rename.is_some();
+            // Only modal views obscure the whole page; overlay shells report their actual bounds.
+            let obscured = self.view != View::Doc || self.search_open || self.doc_info.is_some()
+                || self.confirm.is_some() || self.move_dlg.is_some() || self.export_md.is_some() || self.shortcuts || self.rename.is_some();
             ed.update(cx, |e, cx| e.obscure_html(obscured, cx));
         }
         self.native_sidebar.sync(if self.sidebar_open { self.sidebar_w(window) } else { 0. }, window);

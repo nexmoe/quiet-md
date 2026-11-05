@@ -1,0 +1,23 @@
+# Use tools/harness/lib_html with FDL_NOPARK=1 FDL_WINDOW_CAPTURE=1.
+# Selection, slash menu and link card must leave uncovered preview regions visible.
+wait 1000
+place 120 80
+shot overlay-initial
+drag 372 389 635 389
+wait 350
+shot overlay-selection
+key right
+wait 150
+click 520 592
+key cmd-left
+key cmd-shift-right
+type /
+wait 350
+shot overlay-slash
+key escape
+move 430 626
+wait 1100
+shot overlay-link
+move 310 700
+wait 300
+shot overlay-restored

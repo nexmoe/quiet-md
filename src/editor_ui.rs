@@ -4,6 +4,7 @@ use crate::feishu_theme::{self as theme, Theme};
 pub fn icon(name: &str, size: f32, color: Hsla) -> Svg { svg().path(SharedString::from(format!("editor-icons/{name}.svg"))).size(px(size)).flex_none().text_color(color) }
 pub fn popover() -> Div {
     div()
+        .relative().child(crate::html_preview::overlay_marker())
         .bg(crate::theme::raised(Theme::bg_body()))
         .border_1()
         .border_color(Theme::line_border())
@@ -14,6 +15,7 @@ pub fn popover() -> Div {
 }
 pub fn panel() -> Div {
     div()
+        .relative().child(crate::html_preview::overlay_marker())
         .bg(crate::theme::raised(Theme::bg_body()))
         .border_1()
         .border_color(Theme::line_border())
