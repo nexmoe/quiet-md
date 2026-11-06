@@ -106,7 +106,7 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 | `app.rs` | `Workspace`：两栏窗口、打开 / 新建 / 保存 / 删除、保存状态、提醒调度 |
 | `html.rs` / `printing.rs` / `transfer.rs` | 导出 HTML / PDF、打印、导入导出的界面 |
 | `clipboard.rs` | 系统剪贴板的 HTML 读取，以及脚本模式的模拟剪贴板 |
-| `sidebar.rs` / `tree.rs` | 左栏与文档树（子文档、移动到） |
+| `sidebar.rs` / `sidebar_drag.rs` / `tree.rs` | 左栏与文档树：子文档、移动到、拖拽反馈与排序；层级校验和顺序写入在 core 的 `store.rs` |
 | `home.rs` / `trash.rs` | 主页、回收站 |
 | `search.rs` | 搜索弹窗、高级搜索 |
 | `docmenu.rs` / `docinfo.rs` / `modes.rs` | 「…」菜单、文档信息、编辑 / 阅读切换和快捷键面板 |

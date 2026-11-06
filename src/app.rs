@@ -232,6 +232,8 @@ pub struct Workspace {
     pub sidebar_width: f32,
     /// The resize handle is being dragged.
     pub sidebar_drag: bool,
+    pub(crate) doc_drag: Option<crate::sidebar_drag::DocDrag>,
+    pub(crate) drag_bounds: crate::sidebar_drag::DragBounds,
     /// The search dialog (command-center style) is open.
     pub search_open: bool,
     pub status: SaveStatus,
@@ -337,7 +339,7 @@ impl Workspace {
             cx.observe_window_appearance(window, |this, _, cx| if crate::settings::sync_dark(cx) { crate::settings::refresh_all(this, cx); }),
             cx.observe_window_activation(window, |this, window, cx| {
                 if window.is_window_active() { if let Some(id) = &this.current { crate::quick_note::used(id, cx); } this.entries = this.store.list(); this.sort(); crate::update::check_if_stale(cx); cx.notify(); }
-                else { this.cancel_shortcut_recording(cx); this.flush(cx); }
+                else { this.doc_drag = None; this.cancel_shortcut_recording(cx); this.flush(cx); cx.notify(); }
             }),
             cx.subscribe_in(&search, window, |this, _, ev: &TextFieldEvent, window, cx| {
                 match ev {
@@ -407,6 +409,8 @@ impl Workspace {
             sidebar_open: !quick,
             sidebar_width,
             sidebar_drag: false,
+            doc_drag: None,
+            drag_bounds: Default::default(),
             search_open: false,
             status: SaveStatus::Idle,
             row_menu: None,
@@ -1279,6 +1283,7 @@ pub(crate) const HEADER_ACTIONS_H: f32 = 32.;
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.tick_doc_drag(window, cx);
         // Clicks no longer take focus from the editor (see the root's mouse
         // down), so leaving the document hands it back to the window's keys.
         if self.view != View::Doc && self.editor.as_ref().is_some_and(|e| e.read(cx).focus.is_focused(window)) { window.focus(&self.focus); }
@@ -1287,6 +1292,7 @@ impl Render for Workspace {
         let row_menu = self.render_row_menu(window, cx);
         let resize = self.sidebar_open.then(|| self.render_resize_handle(window, cx));
         let resize_overlay = self.render_resize_overlay(cx);
+        let doc_drag = self.render_doc_drag(window, cx);
         let search = self.render_search(window, cx);
         let doc_menu = self.render_doc_menu(window, cx);
         let doc_info = self.render_doc_info(cx);
@@ -1344,6 +1350,9 @@ impl Render for Workspace {
             .on_mouse_down(MouseButton::Left, cx.listener(|w, _, window, cx| {
                 if w.view == View::Doc && w.editor.as_ref().is_some_and(|e| e.read(cx).focus.is_focused(window)) { window.prevent_default(); }
             }))
+            .on_mouse_move(cx.listener(|w, ev: &MouseMoveEvent, _, cx| w.move_doc_drag(ev, cx)))
+            .on_mouse_up(MouseButton::Left, cx.listener(|w, ev: &MouseUpEvent, window, cx| w.end_doc_drag(ev.position, window, cx)))
+            .on_mouse_up_out(MouseButton::Left, cx.listener(|w, ev: &MouseUpEvent, window, cx| w.end_doc_drag(ev.position, window, cx)))
             .relative()
             .size_full()
             .flex()
@@ -1380,6 +1389,10 @@ impl Render for Workspace {
                 w.shortcuts = !w.shortcuts;
                 cx.notify();
             }))
+            // Editor key bindings dispatch actions before raw key listeners.
+            .capture_action(cx.listener(|w, _: &crate::editor::keymap::Escape, _, cx| {
+                if w.doc_drag.take().is_some() { cx.stop_propagation(); cx.notify(); }
+            }))
             .on_key_down(cx.listener(|w, ev: &KeyDownEvent, window, cx| {
                 // The theme dropdown: ↑ ↓ preview, ↩ applies, Esc closes it (not 设置).
                 if w.theme_menu.is_some() && w.theme_menu_key(&ev.keystroke.key, cx) {
@@ -1404,6 +1417,11 @@ impl Render for Workspace {
             // Esc leaves 批量操作 (closing its menu or confirmation first), even from the editor.
             .capture_key_down(cx.listener(|w, ev: &KeyDownEvent, _, cx| {
                 if w.record_shortcut(ev, cx) { return; }
+                if ev.keystroke.key == "escape" && w.doc_drag.take().is_some() {
+                    cx.stop_propagation();
+                    cx.notify();
+                    return;
+                }
                 // Esc cancels a confirmation dialog.
                 if ev.keystroke.key == "escape" && (w.confirm.is_some() || w.export_md.is_some()) {
                     w.confirm = None;
@@ -1444,6 +1462,7 @@ impl Render for Workspace {
             .children(export_md)
             .children(search)
             .children(resize_overlay)
+            .children(doc_drag)
             .children(toast)
     }
 }

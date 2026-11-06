@@ -1207,6 +1207,9 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "刚刚" => "just now",
         "文档不存在" => "Document not found",
         "文档已被另一个实例修改，未覆盖磁盘内容。请另存副本或重新载入磁盘版本" => "Another instance modified this document. The file was not overwritten. Save a copy or reload the version on disk.",
+        "目标文档不存在" => "Destination document not found",
+        "不能移动到自身或子文档中" => "Cannot move a document into itself or one of its children",
+        "目标位置已改变，请重试" => "The destination has changed. Please try again.",
         "这个文档库由更新版本的 Quiet.md 创建，部分内容可能无法正确显示，请升级后再编辑" => "These documents were created by a newer version of Quiet.md. Update the app before editing them.",
         _ => text,
     }

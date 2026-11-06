@@ -29,10 +29,13 @@ pub struct Meta {
     /// 父文档: the page this one hangs under in the 我的文档库 tree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
-    /// Position among its siblings (milliseconds of the last move); 0 falls
-    /// back to `created`.
+    /// Child position: a manual rank or the last menu move's milliseconds;
+    /// 0 falls back to `created`.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub order: u64,
+    /// Manual top-level position. Absent in older libraries: keep recent-first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_order: Option<u64>,
     /// 收藏时间 (0: not starred).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub starred: u64,
@@ -54,7 +57,7 @@ impl Default for Meta {
         Self {
             created: 0, modified: 0, pinned: false, opened: 0,
             width: PageWidth::default(), catalogue_closed: true,
-            parent: None, order: 0, starred: 0, reading: false,
+            parent: None, order: 0, root_order: None, starred: 0, reading: false,
             info: InfoRow::default(), refs_hidden: false,
         }
     }
@@ -90,6 +93,11 @@ impl Meta {
     /// Sort key among siblings: oldest first, moved pages last.
     pub fn sibling_key(&self) -> u64 {
         if self.order > 0 { self.order } else { self.created * 1000 }
+    }
+
+    /// New pages precede manually ordered roots; untouched libraries stay recent-first.
+    pub fn root_key(&self) -> (u64, std::cmp::Reverse<u64>) {
+        (self.root_order.unwrap_or(0), std::cmp::Reverse(self.modified))
     }
 }
 
@@ -752,12 +760,61 @@ impl Store {
     /// 移动到: hang `id` under `parent` (`None` = top level of 我的文档库), as its last child.
     pub fn set_parent(&mut self, id: &str, parent: Option<&str>) -> Result<Meta> {
         let _lock = self.begin_write()?;
+        self.validate_parent(id, parent)?;
+        let root_order = parent.is_none().then(|| self.index.values().filter(|m| m.parent.is_none()).filter_map(|m| m.root_order).max()).flatten().map(|n| n.saturating_add(1));
+        let previous = self.index.clone();
         let m = self.index.get_mut(id).ok_or_else(|| anyhow::anyhow!("文档不存在"))?;
         m.parent = parent.map(str::to_string);
+        m.root_order = root_order;
         m.order = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
         let m = m.clone();
-        self.save_index()?;
+        if let Err(e) = self.save_index() { self.index = previous; return Err(e); }
         Ok(m)
+    }
+
+    fn validate_parent(&self, id: &str, parent: Option<&str>) -> Result<()> {
+        anyhow::ensure!(self.index.contains_key(id) && self.path(id).is_file(), "文档不存在");
+        let mut seen = std::collections::HashSet::new();
+        let mut p = parent;
+        while let Some(current) = p {
+            anyhow::ensure!(current != id && seen.insert(current), "不能移动到自身或子文档中");
+            let m = self.index.get(current).filter(|_| self.path(current).is_file()).ok_or_else(|| anyhow::anyhow!("目标文档不存在"))?;
+            p = m.parent.as_deref();
+        }
+        Ok(())
+    }
+
+    /// Move a whole page subtree before a sibling, or append when `before` is None.
+    /// Only the index changes. Validate and write all sibling positions under one lock.
+    pub fn move_in_tree(&mut self, id: &str, parent: Option<&str>, before: Option<&str>) -> Result<bool> {
+        let _lock = self.begin_write()?;
+        self.validate_parent(id, parent)?;
+        let active: std::collections::HashSet<&str> = self.index.keys().filter(|id| self.path(id).is_file()).map(String::as_str).collect();
+        let effective_parent = |m: &Meta| m.parent.as_deref().filter(|p| active.contains(p)).map(str::to_string);
+        if let Some(anchor) = before {
+            let m = self.index.get(anchor).filter(|_| active.contains(anchor)).ok_or_else(|| anyhow::anyhow!("目标文档不存在"))?;
+            anyhow::ensure!(effective_parent(m).as_deref() == parent, "目标位置已改变，请重试");
+            if anchor == id { return Ok(false); }
+        }
+        let mut siblings: Vec<String> = self.index.iter().filter(|(key, m)| active.contains(key.as_str()) && effective_parent(m).as_deref() == parent).map(|(key, _)| key.clone()).collect();
+        siblings.sort_by(|a, b| {
+            let (a_meta, b_meta) = (&self.index[a], &self.index[b]);
+            (if parent.is_some() { a_meta.sibling_key().cmp(&b_meta.sibling_key()) } else { a_meta.root_key().cmp(&b_meta.root_key()) }).then_with(|| a.cmp(b))
+        });
+        let old = siblings.clone();
+        siblings.retain(|key| key != id);
+        let pos = before.and_then(|anchor| siblings.iter().position(|key| key == anchor)).unwrap_or(siblings.len());
+        siblings.insert(pos, id.to_string());
+        if siblings == old && self.index[id].parent.as_deref() == parent { return Ok(false); }
+        let previous = self.index.clone();
+        self.index.get_mut(id).unwrap().parent = parent.map(str::to_string);
+        for (i, key) in siblings.iter().enumerate() {
+            let m = self.index.get_mut(key).unwrap();
+            if parent.is_none() { m.root_order = Some(i as u64 + 1); }
+            else { m.order = i as u64 + 1; m.root_order = None; }
+        }
+        if let Err(e) = self.save_index() { self.index = previous; return Err(e); }
+        Ok(true)
     }
 
     /// 收藏 / 取消收藏; returns the new 收藏时间 (0: not starred).
@@ -805,6 +862,117 @@ mod tests {
 
     fn doc(title: &str) -> Document {
         Document { title: crate::model::RichText::plain(title), ..Default::default() }
+    }
+
+    fn children(s: &mut Store, parent: Option<&str>) -> Vec<String> {
+        let mut entries: Vec<_> = s.list().into_iter().filter(|e| e.meta.parent.as_deref() == parent).collect();
+        entries.sort_by(|a, b| (if parent.is_some() { a.meta.sibling_key().cmp(&b.meta.sibling_key()) } else { a.meta.root_key().cmp(&b.meta.root_key()) }).then_with(|| a.id.cmp(&b.id)));
+        entries.into_iter().map(|e| e.id).collect()
+    }
+
+    #[test]
+    fn tree_move_keeps_subtrees_content_and_manual_root_order() {
+        let lib = Lib::new("tree-move");
+        let mut s = lib.open();
+        let a = s.create_from(&doc("A")).unwrap();
+        let b = s.create_from(&doc("B")).unwrap();
+        let c = s.create_from(&doc("C")).unwrap();
+        let child = s.create_from(&doc("Child")).unwrap();
+        let grandchild = s.create_from(&doc("Grandchild")).unwrap();
+        for (i, id) in [&a, &b, &c].into_iter().enumerate() { s.update_meta(id, |m| m.modified = 30 - i as u64).unwrap(); }
+        s.set_parent(&child, Some(&a)).unwrap();
+        s.set_parent(&grandchild, Some(&child)).unwrap();
+        let files: Vec<_> = [&a, &b, &c, &child, &grandchild].into_iter().map(|id| (id, std::fs::read(s.path(id)).unwrap())).collect();
+        assert_eq!(children(&mut s, None), [&a, &b, &c].map(String::as_str));
+        assert!(s.move_in_tree(&c, None, Some(&a)).unwrap());
+        let mut s = lib.open();
+        assert_eq!(children(&mut s, None), [&c, &a, &b].map(String::as_str));
+        s.update_meta(&b, |m| m.modified = 999).unwrap();
+        assert_eq!(children(&mut s, None), [&c, &a, &b].map(String::as_str));
+        assert!(s.move_in_tree(&a, Some(&c), None).unwrap());
+        assert_eq!(children(&mut s, Some(&c)), [&a].map(String::as_str));
+        assert_eq!(children(&mut s, Some(&a)), [&child].map(String::as_str));
+        assert_eq!(children(&mut s, Some(&child)), [&grandchild].map(String::as_str));
+        assert!(s.move_in_tree(&a, None, Some(&c)).unwrap());
+        assert_eq!(children(&mut s, None), [&a, &c, &b].map(String::as_str));
+        for (id, bytes) in files { assert_eq!(std::fs::read(s.path(id)).unwrap(), bytes); }
+        // New pages stay easy to find; menu moves append to the manual root order.
+        let fresh = s.create_from(&doc("New")).unwrap();
+        assert_eq!(children(&mut s, None), [&fresh, &a, &c, &b].map(String::as_str));
+        s.set_parent(&child, None).unwrap();
+        assert_eq!(children(&mut s, None), [&fresh, &a, &c, &b, &child].map(String::as_str));
+    }
+
+    #[test]
+    fn tree_move_reorders_children_and_skips_unchanged_drops() {
+        let lib = Lib::new("tree-siblings");
+        let mut s = lib.open();
+        let parent = s.create_from(&doc("Parent")).unwrap();
+        let mut ids = vec![];
+        for i in 0..4 {
+            let id = s.create_from(&doc(&i.to_string())).unwrap();
+            s.set_parent(&id, Some(&parent)).unwrap();
+            s.update_meta(&id, |m| m.order = i + 1).unwrap();
+            ids.push(id);
+        }
+        assert!(s.move_in_tree(&ids[3], Some(&parent), Some(&ids[1])).unwrap());
+        assert_eq!(children(&mut s, Some(&parent)), [&ids[0], &ids[3], &ids[1], &ids[2]].map(String::as_str));
+        let index = std::fs::read(lib.0.join("index.json")).unwrap();
+        assert!(!s.move_in_tree(&ids[3], Some(&parent), Some(&ids[1])).unwrap());
+        assert!(!s.move_in_tree(&ids[3], Some(&parent), Some(&ids[3])).unwrap());
+        assert_eq!(std::fs::read(lib.0.join("index.json")).unwrap(), index);
+        assert!(s.move_in_tree(&ids[0], Some(&parent), None).unwrap());
+        assert_eq!(children(&mut lib.open(), Some(&parent)), [&ids[3], &ids[1], &ids[2], &ids[0]].map(String::as_str));
+    }
+
+    #[test]
+    fn tree_move_rejects_cycles_missing_pages_and_stale_anchors() {
+        let lib = Lib::new("tree-invalid");
+        let mut s = lib.open();
+        let a = s.create_from(&doc("A")).unwrap();
+        let b = s.create_from(&doc("B")).unwrap();
+        let c = s.create_from(&doc("C")).unwrap();
+        s.update_meta(&a, |m| m.modified = 900).unwrap();
+        s.update_meta(&c, |m| m.modified = 700).unwrap();
+        s.set_parent(&b, Some(&a)).unwrap();
+        s.set_parent(&c, Some(&b)).unwrap();
+        let index = std::fs::read(lib.0.join("index.json")).unwrap();
+        for (id, parent, before) in [(&a, Some(a.as_str()), None), (&a, Some(c.as_str()), None), (&a, Some("missing"), None), (&a, None, Some(c.as_str())), (&a, None, Some("missing")), (&String::from("missing"), None, None)] {
+            assert!(s.move_in_tree(id, parent, before).is_err());
+        }
+        assert!(s.set_parent(&a, Some(&c)).is_err());
+        assert_eq!(std::fs::read(lib.0.join("index.json")).unwrap(), index);
+        // A different instance moves the destination after the drag began.
+        let mut other = lib.open();
+        other.set_parent(&c, None).unwrap();
+        assert!(s.move_in_tree(&a, Some(&b), Some(&c)).is_err());
+        assert!(s.move_in_tree(&c, None, Some(&a)).unwrap());
+        assert_eq!(children(&mut other, None), [&c, &a].map(String::as_str));
+        std::fs::remove_file(s.path(&c)).unwrap();
+        assert!(s.move_in_tree(&a, Some(&c), None).is_err());
+    }
+
+    #[test]
+    fn tree_move_write_failure_keeps_disk_and_memory_unchanged() {
+        let lib = Lib::new("tree-write-failure");
+        let mut s = lib.open();
+        let a = s.create_from(&doc("A")).unwrap();
+        let b = s.create_from(&doc("B")).unwrap();
+        let disk = std::fs::read(lib.0.join("index.json")).unwrap();
+        let memory = serde_json::to_value(&s.index).unwrap();
+        std::fs::remove_file(lib.0.join("index.json.bak")).unwrap();
+        std::fs::create_dir(lib.0.join("index.json.bak")).unwrap();
+        assert!(s.move_in_tree(&a, Some(&b), None).is_err());
+        assert_eq!(serde_json::to_value(&s.index).unwrap(), memory);
+        assert!(s.set_parent(&a, Some(&b)).is_err());
+        assert_eq!(serde_json::to_value(&s.index).unwrap(), memory);
+        assert_eq!(std::fs::read(lib.0.join("index.json")).unwrap(), disk);
+        // Lock failure must reject the drag before any in-memory change too.
+        std::fs::remove_file(lib.0.join(".lock")).unwrap();
+        std::fs::create_dir(lib.0.join(".lock")).unwrap();
+        assert!(s.move_in_tree(&a, Some(&b), None).is_err());
+        assert_eq!(serde_json::to_value(&s.index).unwrap(), memory);
+        assert_eq!(std::fs::read(lib.0.join("index.json")).unwrap(), disk);
     }
 
     #[test]

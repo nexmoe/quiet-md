@@ -13,8 +13,9 @@ use crate::ui::{ROW_RADIUS, icon, ui_text};
 use gpui::{prelude::FluentBuilder, *};
 use std::collections::{HashMap, HashSet};
 
-/// Children of every page, keyed by parent (`None`: the top level, in list
-/// order); siblings oldest first. A page whose parent is gone, or that sits
+/// Children of every page, keyed by parent (`None`: the top level).
+/// Roots stay recent-first until manually arranged; children use sibling order.
+/// A page whose parent is gone, or that sits
 /// in a parent cycle, is shown at the top level.
 pub(crate) struct Tree<'a> {
     roots: Vec<&'a Entry>,
@@ -51,8 +52,9 @@ impl<'a> Tree<'a> {
             }
         }
         for v in kids.values_mut() {
-            v.sort_by_key(|e| e.meta.sibling_key());
+            v.sort_by(|a, b| a.meta.sibling_key().cmp(&b.meta.sibling_key()).then_with(|| a.id.cmp(&b.id)));
         }
+        roots.sort_by(|a, b| a.meta.root_key().cmp(&b.meta.root_key()).then_with(|| a.id.cmp(&b.id)));
         Tree { roots, kids }
     }
 

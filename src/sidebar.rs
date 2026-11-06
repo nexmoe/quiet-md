@@ -99,6 +99,7 @@ impl Workspace {
     }
 
     pub(crate) fn render_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        self.drag_bounds.rows.borrow_mut().clear();
         let entries: Vec<Entry> = self.entries.clone();
         self.more_bounds.borrow_mut().clear();
 
@@ -339,7 +340,9 @@ impl Workspace {
                 .hover(|s| s.bg(Theme::sidebar_hover()))
                 .child(icon(name, 16., Theme::text_caption()))
         };
-        let row = div().h(px(SECTION_H)).pl(px(4.)).pt(px(SECTION_TOP)).flex().items_center().group(group.clone());
+        let root_bounds = self.drag_bounds.root.clone();
+        let row = div().relative().h(px(SECTION_H)).pl(px(4.)).pt(px(SECTION_TOP)).flex().items_center().group(group.clone())
+            .when(idx == 1, |d| d.child(canvas(move |bounds, _, _| root_bounds.set(bounds), |_, _, _, _| {}).absolute().inset_0()));
         if let (1, Some(sel)) = (idx, self.batch.as_ref()) {
             let n = sel.len();
             let all = n > 0 && n >= self.entries.len().min(BATCH_LIMIT);
@@ -501,6 +504,10 @@ impl Workspace {
                         cx.notify();
                         return;
                     }
+                    if in_lib {
+                        w.press_doc(&id, ev.position, cx);
+                        return;
+                    }
                     w.open(&id, window, cx);
                 }),
             )
@@ -612,7 +619,12 @@ impl Workspace {
         let batch = self.batch.as_ref().filter(|_| key == "doc");
         let checked = batch.is_some_and(|b| b.contains(&e.id));
         let blocked = batch.is_some_and(|b| !checked && b.len() >= BATCH_LIMIT);
+        let bounds = self.drag_bounds.rows.clone();
+        let id = e.id.clone();
         self.row_base(e, key, cx)
+            .relative()
+            .when(key == "doc", |d| d.child(canvas(move |b, _, _| { bounds.borrow_mut().insert(id.clone(), b); }, |_, _, _, _| {}).absolute().inset_0()))
+            .when(key == "doc" && self.dragged_doc(&e.id), |d| d.opacity(0.4))
             .h(px(DOC_ROW_H))
             .flex()
             .items_center()

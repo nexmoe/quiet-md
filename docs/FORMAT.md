@@ -26,7 +26,8 @@ Quiet.md/
 | `pinned` | 置顶 | false |
 | `starred` | 收藏时间，0 表示未收藏 | 0 |
 | `parent` | 父文档 id（文档树） | 顶层 |
-| `order` | 同级排序键（最近一次移动的毫秒数） | 按 `created` 排 |
+| `order` | 子级排序键；拖拽后按同级顺序重新编号，菜单移动追加到末尾 | 按 `created` 排 |
+| `root_order` | 手动排列后的顶层顺序，从 1 开始 | 按最近修改排；新增文档位于手动顺序之前 |
 | `width` | 页宽：`standard`（820）/ `wide`（1020）/ `full` | standard |
 | `catalogue_closed` | 目录已收起 | false |
 | `reading` | 阅读模式 | false |
@@ -34,6 +35,8 @@ Quiet.md/
 | `refs_hidden` | 隐藏引用列表 | false |
 
 新字段一律带 `#[serde(default)]`，值为默认时不写出。这样旧版程序读新库会忽略它不认识的字段，新版程序读旧库会用默认值。
+
+拖拽仅原子写入索引，不改文档 XML。顶层第一次手动排列时记住当前文档的相对顺序，之后编辑不再打乱它；旧版忽略 `root_order`，仍按最近修改展示。目录布局与 DocxXML 不变，`FORMAT` 保持 1。
 
 ### 可靠性约定
 
