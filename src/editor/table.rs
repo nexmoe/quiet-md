@@ -301,7 +301,11 @@ impl Editor {
         let Some(d) = self.tables.drag.take() else { return };
         self.tables.scrolled = None;
         match d {
-            Drag::Resize { table, col, live, .. } if self.core.table_set_width(table, col, live) => self.changed(window, cx),
+            Drag::Resize { table, col, live, .. } if self.core.table_set_width(table, col, live) => {
+                self.changed(window, cx);
+                // Resizing leaves the caret where it was, possibly off screen.
+                self.autoscroll = false;
+            }
             Drag::Move { started: true, drop, .. } => {
                 self.toolbar_hidden = false;
                 if let Some(d) = drop
