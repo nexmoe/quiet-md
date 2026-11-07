@@ -56,7 +56,7 @@ NSWorkspace.shared.open([files[0]], withApplicationAt: app, configuration: confi
 }
 waitFor("cold launch completed") { launched }
 require(launchError == nil && running != nil, "cold launch: \(String(describing: launchError))")
-let instance = running!
+var instance = running!
 runningTest = instance
 defer { if !instance.isTerminated { instance.terminate() } }
 require(instance.executableURL?.resolvingSymlinksInPath() == app.appendingPathComponent("Contents/MacOS/quiet_md"), "test must target this bundle")
@@ -66,7 +66,8 @@ func titles() -> [String] {
         .compactMap { $0[kCGWindowName as String] as? String }
 }
 waitFor("cold Finder event opens the decoded Markdown path") { titles().contains(files[0].lastPathComponent + " — Quiet.md") }
-print("PASS: registered md/mdx; cold launch opens Unicode/space/percent path")
+require(titles().filter { !$0.isEmpty }.count == 1, "cold file launch must not open the library home window")
+print("PASS: registered md/mdx; cold launch opens only the requested file")
 
 let warm = NSWorkspace.OpenConfiguration()
 warm.activates = false
@@ -82,3 +83,33 @@ require(NSWorkspace.shared.urlForApplication(toOpen: files[0]) == defaultMD, "Ma
 require(instance.terminate(), "graceful test app quit")
 waitFor("test app quit") { instance.isTerminated }
 print("PASS: warm multi-file md/mdx event; original bytes and Markdown default preserved")
+
+func launchWithArguments(_ args: [String]) -> NSRunningApplication {
+    config.arguments = args
+    var result: NSRunningApplication?
+    var failure: Error?
+    var done = false
+    NSWorkspace.shared.openApplication(at: app, configuration: config) { application, error in
+        result = application; failure = error; done = true
+    }
+    waitFor("application launch") { done }
+    require(failure == nil && result != nil, "launch: \(String(describing: failure))")
+    runningTest = result
+    return result!
+}
+func quitInstance() {
+    require(instance.terminate(), "graceful test app quit")
+    waitFor("test app quit") { instance.isTerminated }
+}
+
+instance = launchWithArguments([files[0].path])
+waitFor("command-line file opens") { titles().contains(files[0].lastPathComponent + " — Quiet.md") }
+require(titles().filter { !$0.isEmpty }.count == 1, "command-line file launch must not open the home window")
+quitInstance()
+print("PASS: command-line file launch opens only the requested file")
+
+instance = launchWithArguments([])
+waitFor("ordinary launch opens the library home") { titles().contains("Quiet.md") }
+require(!titles().contains { $0.hasSuffix(" — Quiet.md") }, "ordinary launch must not reopen test files")
+quitInstance()
+print("PASS: ordinary application launch still opens the library home")

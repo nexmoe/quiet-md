@@ -24,6 +24,7 @@ pub fn install(cx: &mut App) {
 pub fn open_paths(paths: &[PathBuf], cx: &mut App) {
     for path in paths {
         if let Err(e) = open_path(path, cx) {
+            if cx.windows().is_empty() { crate::open_main_window(crate::devtools::scripted(), cx); }
             let message = crate::localized_format!("无法打开文件：{}", "Could not open file: {}", path.display());
             let detail = e.to_string();
             if let Some(handle) = cx.active_window().or_else(|| cx.windows().first().copied()) {

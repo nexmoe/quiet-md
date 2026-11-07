@@ -155,10 +155,10 @@ fn main() {
         if quick_enabled { quick_note::install(cx); }
         app::set_menus(cx);
         update::init(cx);
-        open_main_window(scripted, cx);
-        let paths: Vec<_> = std::env::args_os().skip(1).filter(|p| !p.to_string_lossy().starts_with("-psn_")).map(std::path::PathBuf::from).collect();
-        local_file::open_paths(&paths, cx);
-        local_file::open_paths(&pending.take(), cx);
+        let mut paths: Vec<_> = std::env::args_os().skip(1).filter(|p| !p.to_string_lossy().starts_with("-psn_")).map(std::path::PathBuf::from).collect();
+        paths.extend(pending.take());
+        if paths.is_empty() { open_main_window(scripted, cx); }
+        else { local_file::open_paths(&paths, cx); }
         *open_cx.borrow_mut() = Some(cx.to_async());
         cx.on_window_closed(move |cx| {
             if (!quick_enabled || !cfg!(target_os = "macos")) && cx.windows().is_empty() {
