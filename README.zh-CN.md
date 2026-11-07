@@ -94,7 +94,7 @@ Linux 支持目前处于实验阶段，需要从源码构建；参见 [Linux 构
 - **编辑**：标题、有序 / 无序列表、待办、引用、代码块（语法高亮）、LaTeX 公式、表格（可合并单元格）、高亮块、分栏、图片、附件、封面。支持 `#`、`-`、`[]`、`>` 等 Markdown 快捷输入和 `/` 斜杠菜单。
 - **整理**：文档树、置顶、收藏、全文搜索、回收站。
 - **导入导出**：导入 Markdown 和飞书 DocxXML；导出 Markdown、PDF，也可以直接打印。从飞书或网页粘贴时保留结构。
-- **本地文件**：通过「文件 → 打开文件…」（`⌘O` / `Ctrl+O`）或 `quiet_md /path/to/note.md` 打开 `.md` / `.mdx`，用现有编辑器编辑并按 `⌘S` / `Ctrl+S` 保存回原文件。保存遵循 Markdown 导出规则；MDX 按 Markdown 处理，不执行 JSX。
+- **本地文件**：通过「文件 → 打开文件…」（`⌘O` / `Ctrl+O`）、macOS 访达的「打开方式 → Quiet.md」或 `quiet_md /path/to/note.md` 打开 `.md` / `.mdx`，用现有编辑器编辑并按 `⌘S` / `Ctrl+S` 保存回原文件。保存遵循 Markdown 导出规则；MDX 按 Markdown 处理，不执行 JSX。
 - **快捷键**：按 `⌘ /`（Windows 上是 `Ctrl+/`）查看全部快捷键，每一个都能改。快捷键在 Windows 上用 Ctrl 代替 ⌘、Alt 代替 ⌥，应用里和「开始指南」里都按当前系统显示。
 - **主题**：内置 Craft、飞书、Notion、Obsidian 四套风格，也可以用 CSS 自己写，见 [docs/THEMES.md](docs/THEMES.md)。
 

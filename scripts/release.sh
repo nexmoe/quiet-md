@@ -38,6 +38,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>NSDocumentsFolderUsageDescription</key><string>Quiet.md 将笔记保存在文稿中的 Quiet.md 文件夹。</string>
 </dict></plist>
 PLIST
+/usr/libexec/PlistBuddy -c 'Merge packaging/macos-document-types.plist' "$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist"
 codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"

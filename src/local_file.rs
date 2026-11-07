@@ -3,6 +3,10 @@ use crate::{app, editor::view::{Editor, EditorEvent}, settings::tr};
 use gpui::*;
 use std::path::{Path, PathBuf};
 
+pub fn paths_from_urls(urls: Vec<String>) -> Vec<PathBuf> {
+    urls.into_iter().filter_map(|s| url::Url::parse(&s).ok()?.to_file_path().ok()).collect()
+}
+
 pub fn install(cx: &mut App) {
     cx.on_action(|_: &app::OpenLocalFile, cx| {
         let picked = crate::devtools::take_pick();
@@ -143,5 +147,20 @@ impl Render for LocalFile {
             .on_action(|_: &app::ToggleFullScreen, window, _| window.toggle_fullscreen())
             .child(div().px(px(24.)).py(px(8.)).text_size(px(12.)).text_color(crate::theme::Theme::text_caption()).child(format!("{} · {status}", self.path.display())))
             .child(div().flex_1().min_h_0().child(self.editor.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::paths_from_urls;
+
+    #[test]
+    fn finder_urls_preserve_local_paths() {
+        let paths = [std::env::temp_dir().join("中文 空格 #%?.md"), std::env::temp_dir().join("Second.MDX")];
+        let urls = paths.iter().map(|p| url::Url::from_file_path(p).unwrap().to_string()).collect();
+        assert_eq!(paths_from_urls(urls), paths);
+        assert!(paths_from_urls(vec!["https://example.com/file.md".into(), "not a URL".into()]).is_empty());
+        #[cfg(not(target_os = "windows"))]
+        assert!(paths_from_urls(vec!["file://remote-host/note.md".into()]).is_empty());
     }
 }

@@ -46,6 +46,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSDocumentsFolderUsageDescription</key><string>Quiet.md 把文档库放在「文稿」里的 Quiet.md 文件夹。</string>
 </dict></plist>
 PLIST
+/usr/libexec/PlistBuddy -c 'Merge packaging/macos-document-types.plist' "$app/Contents/Info.plist"
 codesign --force --sign - "$app" >/dev/null 2>&1 || true
 (QUIET_MD_HOME="$QUIET_MD_HOME" nohup "$bin" >/tmp/quiet-md-preview.log 2>&1 &)
 sleep 2; pgrep -fl "^$bin"

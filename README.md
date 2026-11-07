@@ -96,7 +96,7 @@ A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character doc
 - **Editing**: headings, ordered and bulleted lists, to-dos, quotes, code blocks with syntax highlighting, LaTeX math, tables (with merged cells), callouts, columns, images, attachments and covers. Markdown shortcuts such as `#`, `-`, `[]` and `>`, plus a `/` slash menu.
 - **Organizing**: a document tree, pinning, favorites, full-text search and a trash.
 - **Import and export**: import Markdown and Feishu (Lark) DocxXML; export Markdown and PDF, or print directly. Pasting from Feishu or a web page keeps the structure.
-- **Local files**: open `.md` / `.mdx` through **File → Open File…** (`⌘O` / `Ctrl+O`) or `quiet_md /path/to/note.md`, edit with the existing editor, and save back with `⌘S` / `Ctrl+S`. Saving follows the Markdown export rules; MDX is treated as Markdown and JSX components are not executed.
+- **Local files**: open `.md` / `.mdx` through **File → Open File…** (`⌘O` / `Ctrl+O`), Finder's **Open With → Quiet.md** on macOS, or `quiet_md /path/to/note.md`, edit with the existing editor, and save back with `⌘S` / `Ctrl+S`. Saving follows the Markdown export rules; MDX is treated as Markdown and JSX components are not executed.
 - **Shortcuts**: press `⌘ /` (`Ctrl+/` on Windows) to see them all. Every one can be rebound. On Windows, Ctrl stands in for ⌘ and Alt for ⌥; the app and the Getting started guides show the keys for your system.
 - **Themes**: four built-in styles — Craft, Feishu, Notion and Obsidian — each with a dark variant, or write your own in CSS; see [docs/THEMES.md](docs/THEMES.md).
 

@@ -117,6 +117,18 @@ fn main() {
         logging::fatal(&format!("无法初始化文档库 / Could not set up the library at {}", root.display()), &err);
     }
     let app = Application::new().with_assets(assets::Assets);
+    // Finder can deliver file URLs before applicationDidFinishLaunching.
+    let pending = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let open_cx = std::rc::Rc::new(std::cell::RefCell::new(None::<AsyncApp>));
+    app.on_open_urls({
+        let pending = pending.clone();
+        let open_cx = open_cx.clone();
+        move |urls| {
+            let paths = local_file::paths_from_urls(urls);
+            if let Some(cx) = open_cx.borrow().as_ref() { let _ = cx.update(|cx| local_file::open_paths(&paths, cx)); }
+            else { pending.borrow_mut().extend(paths); }
+        }
+    });
     // macOS keeps running after ⌘W closes the last window (quick notes stay
     // available); clicking the Dock icon then brings the main window back.
     app.on_reopen(|cx| if cx.windows().is_empty() { open_main_window(false, cx); });
@@ -146,6 +158,8 @@ fn main() {
         open_main_window(scripted, cx);
         let paths: Vec<_> = std::env::args_os().skip(1).filter(|p| !p.to_string_lossy().starts_with("-psn_")).map(std::path::PathBuf::from).collect();
         local_file::open_paths(&paths, cx);
+        local_file::open_paths(&pending.take(), cx);
+        *open_cx.borrow_mut() = Some(cx.to_async());
         cx.on_window_closed(move |cx| {
             if (!quick_enabled || !cfg!(target_os = "macos")) && cx.windows().is_empty() {
                 cx.quit();
