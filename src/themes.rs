@@ -64,8 +64,11 @@ pub struct Prop {
 }
 
 /// The system families generic CSS names resolve to.
-pub const SYSTEM: &str = ".SystemUIFont";
+pub const SYSTEM: &str = crate::theme::UI_FONT;
+#[cfg(not(target_os = "linux"))]
 pub const SYSTEM_MONO: &str = ".AppleSystemUIFontMonospaced";
+#[cfg(target_os = "linux")]
+pub const SYSTEM_MONO: &str = crate::theme::MONO_FONT;
 
 pub static PROPS: LazyLock<Vec<Prop>> = LazyLock::new(|| {
     use Def::*;
@@ -222,7 +225,7 @@ impl Style {
     /// A colour property: its own value, its token's, or `None` (inherit).
     pub fn color(&self, key: &str) -> Option<Hsla> {
         match self.values.get(key) {
-            Some(Val::C(c)) => Some(*c),
+            Some(Val::C(c)) => Some(crate::theme::adapt(*c)),
             Some(Val::Inherit) => None,
             _ => match self.def(key) {
                 Def::Tok(t) => Some(self.token(t)),
@@ -251,12 +254,12 @@ impl Style {
     }
     pub fn token(&self, name: &str) -> Hsla {
         let i = TOKENS.iter().position(|t| *t == name).unwrap_or(0);
-        self.tokens[i].unwrap_or_else(|| crate::editor_theme::base_color(i, self.feishu))
+        self.tokens[i].map(crate::theme::adapt).unwrap_or_else(|| crate::editor_theme::base_color(i, self.feishu))
     }
     /// A named colour the theme sets (`kind` is color / background / callout / highlight / border).
     pub fn palette(&self, kind: &str, name: &str) -> Option<Hsla> {
         if self.palette.is_empty() { return None }
-        self.palette.get(&format!("{kind}.{name}")).copied()
+        self.palette.get(&format!("{kind}.{name}")).copied().map(if kind == "highlight" { crate::theme::mark } else { crate::theme::adapt })
     }
     /// The named colour this style draws: its own, else its base's.
     pub fn named(&self, kind: &str, name: &str) -> Option<Hsla> { self.palette(kind, name).or_else(|| base_named(kind, name, self.feishu)) }
@@ -306,9 +309,11 @@ pub fn active() -> &'static Style {
     let p = ACTIVE.load(Ordering::Relaxed);
     if p.is_null() { &PLAIN } else { unsafe { &*p } }
 }
-pub fn color(i: usize) -> Option<Hsla> { active().tokens.get(i).copied().flatten() }
+pub fn color(i: usize) -> Option<Hsla> { active().tokens.get(i).copied().flatten().map(crate::theme::adapt) }
 /// Bumped whenever what is drawn may change (the editor re-measures its rows).
 pub fn generation() -> u64 { GENERATION.load(Ordering::Relaxed) }
+/// Something every theme draws changed (light / dark).
+pub fn touch() { GENERATION.fetch_add(1, Ordering::Relaxed); }
 pub fn themes() -> std::sync::RwLockReadGuard<'static, Vec<Theme>> { THEMES.read().unwrap() }
 /// Files that could not be read at all, from the last load.
 pub fn errors() -> Vec<String> { ERRORS.read().unwrap().clone() }
@@ -811,6 +816,8 @@ fn base_css(feishu: bool, name: &str, name_en: &str, description: &str) -> Strin
             Kind::Len => format!("{}px", css_num(st.num(&p.key))),
             Kind::Weight => css_num(st.num(&p.key)),
             Kind::Color => st.color(&p.key).map_or_else(|| "inherit".into(), css_color),
+            // Keep bundled CSS portable and stable; Linux resolves the Feishu monospace default separately.
+            Kind::Font if feishu && p.key == "pre.font" => "Menlo".into(),
             Kind::Font => css_font(st.font(&p.key)),
             Kind::Underline => if st.flag(&p.key) { "underline" } else { "none" }.into(),
             Kind::Strike => if st.flag(&p.key) { "line-through" } else { "none" }.into(),

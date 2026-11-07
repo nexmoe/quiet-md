@@ -46,11 +46,11 @@ fn open_path(path: &Path, cx: &mut App) -> anyhow::Result<()> {
     let original = std::fs::read(&path)?;
     std::str::from_utf8(&original)?;
     let doc = crate::markdown_file::read(&path, false)?;
-    let title = format!("{} — quiet.md", path.file_name().unwrap_or_default().to_string_lossy());
+    let title = format!("{} — Quiet.md", path.file_name().unwrap_or_default().to_string_lossy());
     cx.open_window(WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(900.), px(720.)), cx))),
         titlebar: Some(TitlebarOptions { title: Some(title.into()), ..Default::default() }),
-        window_min_size: Some(size(px(480.), px(400.))), focus: std::env::var_os("FDL_SCRIPT").is_none(), ..Default::default()
+        window_min_size: Some(size(px(480.), px(400.))), focus: !crate::devtools::scripted(), ..Default::default()
     }, |window, cx| cx.new(|cx| {
         let saved = doc.clone();
         let editor = cx.new(|cx| {
@@ -68,7 +68,7 @@ fn open_path(path: &Path, cx: &mut App) -> anyhow::Result<()> {
             cx.on_app_quit(|file, cx| { file.save(cx); async {} }),
         ];
         let this = cx.weak_entity();
-        window.on_window_should_close(cx, move |window, cx| this.update(cx, |file, cx| file.close(false, window, cx)).unwrap_or(true));
+        window.on_window_should_close(cx, move |window, cx| this.update(cx, |file, cx| file.close(false, window, cx)).unwrap_or(false));
         LocalFile { path, editor, original, saved, dirty: false, error: None, closing: false, _subs: subs }
     }))?;
     Ok(())
@@ -124,7 +124,7 @@ impl LocalFile {
 
 pub fn save_before_quit(cx: &mut App) -> bool {
     for handle in cx.windows().into_iter().filter_map(|w| w.downcast::<LocalFile>()) {
-        if !handle.update(cx, |file, window, cx| file.close(true, window, cx)).unwrap_or(true) { return false; }
+        if !handle.update(cx, |file, window, cx| file.close(true, window, cx)).unwrap_or(false) { return false; }
     }
     true
 }

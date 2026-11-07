@@ -17,7 +17,12 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-actions!(workspace, [NewDoc, ImportDoc, OpenLocalFile, ToggleSidebar, FocusSearch, FindInDoc, ReplaceInDoc, OpenSettings, OpenAbout, GoHome, CloseWindow, Quit,
+/// Autosave waits for this pause in editing, but never longer than
+/// SAVE_MAX_DELAY after the oldest change not yet on disk.
+const SAVE_DELAY: Duration = Duration::from_millis(500);
+const SAVE_MAX_DELAY: Duration = Duration::from_secs(2);
+
+actions!(workspace, [NewDoc, ImportDoc, OpenLocalFile, ToggleSidebar, FocusSearch, FindInDoc, ReplaceInDoc, OpenSettings, OpenAbout, CheckForUpdates, GoHome, CloseWindow, Quit,
     HideApp, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen]);
 
 /// The menu bar, in the interface language.
@@ -25,19 +30,20 @@ pub fn set_menus(cx: &mut App) {
     use crate::settings::tr;
     cx.set_menus(vec![
         Menu {
-            name: "quiet.md".into(),
+            name: "Quiet.md".into(),
             items: vec![
-                MenuItem::action(tr("关于 quiet.md", "About quiet.md"), OpenAbout),
+                MenuItem::action(tr("关于 Quiet.md", "About Quiet.md"), OpenAbout),
+                MenuItem::action(tr("检查更新…", "Check for Updates…"), CheckForUpdates),
                 MenuItem::separator(),
                 MenuItem::action(tr("设置…", "Settings…"), OpenSettings),
                 MenuItem::separator(),
                 MenuItem::os_submenu(tr("服务", "Services"), SystemMenuType::Services),
                 MenuItem::separator(),
-                MenuItem::action(tr("隐藏 quiet.md", "Hide quiet.md"), HideApp),
+                MenuItem::action(tr("隐藏 Quiet.md", "Hide Quiet.md"), HideApp),
                 MenuItem::action(tr("隐藏其他", "Hide Others"), HideOthers),
                 MenuItem::action(tr("全部显示", "Show All"), ShowAll),
                 MenuItem::separator(),
-                MenuItem::action(tr("退出 quiet.md", "Quit quiet.md"), Quit),
+                MenuItem::action(tr("退出 Quiet.md", "Quit Quiet.md"), Quit),
             ],
         },
         Menu {
@@ -106,7 +112,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
     ]);
     // Windows: F11 for full screen, and Ctrl+H for 查找和替换 as in Office
-    // and Notepad (written cmd-h: `shortcuts::windows_binding` maps cmd to
+    // and Notepad (written cmd-h: `shortcuts::pc_binding` maps cmd to
     // ctrl and drops a literal ctrl-h, Cocoa's backspace).
     #[cfg(not(target_os = "macos"))]
     cx.bind_keys([KeyBinding::new("f11", ToggleFullScreen, None), KeyBinding::new("cmd-h", ReplaceInDoc, None)]);
@@ -124,20 +130,24 @@ pub fn bind_keys(cx: &mut App) {
             });
         }
     });
-    cx.on_action(|_: &Quit, cx| {
-        if !crate::local_file::save_before_quit(cx) { return; }
-        // The open document is saved first; when that fails its dialog asks
-        // (重试 / 放弃修改) and quits afterwards.
-        let ready = cx
-            .windows()
-            .into_iter()
-            .filter_map(|w| w.downcast::<Workspace>())
-            .all(|w| w.update(cx, |ws, _, cx| ws.save_before(cx, |_, _, cx| cx.quit())).unwrap_or(true));
-        if ready {
-            cx.quit();
-        }
-    });
+    cx.on_action(|_: &Quit, cx| quit(cx));
     crate::modes::bind_keys(cx);
+}
+
+/// 退出: the open document is saved first; when that fails its dialog asks
+/// (重试 / 放弃修改) and quits afterwards. Call it outside any window update
+/// (`cx.defer`): a window on the update stack cannot be asked to save.
+pub fn quit(cx: &mut App) {
+    if !crate::local_file::save_before_quit(cx) { return; }
+    let ready = cx
+        .windows()
+        .into_iter()
+        .filter_map(|w| w.downcast::<Workspace>())
+        .map(|w| w.update(cx, |ws, _, cx| ws.save_before(cx, |_, _, cx| cx.defer(quit))).unwrap_or(false))
+        .fold(true, |ready, saved| ready & saved);
+    if ready {
+        cx.quit();
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -180,6 +190,8 @@ pub enum Confirm {
     Restore(String),
     /// 回收站 → 彻底删除.
     Purge(String),
+    /// 回收站 → 清空回收站: every trashed page, permanently.
+    EmptyTrash,
     /// 隐藏引用列表 (with 不再提示) / 显示引用列表.
     Refs { show: bool, no_ask: bool },
     /// The open document could not be written before it was to be replaced
@@ -270,6 +282,9 @@ pub struct Workspace {
     pub shortcuts: bool,
     pub(crate) focus: FocusHandle,
     save_task: Option<Task<()>>,
+    /// When the oldest edit not yet on disk was made: a save waits for a
+    /// pause in typing, but never longer than `SAVE_MAX_DELAY` after it.
+    dirty_since: Option<Instant>,
     /// The open document has changes not yet on disk (cleared only by a
     /// successful save or by 放弃修改).
     unsaved: bool,
@@ -282,7 +297,7 @@ pub struct Workspace {
 
 /// A macOS notification (only logged when scripted).
 fn notify_system(title: &str, body: &str) {
-    if std::env::var_os("FDL_SCRIPT").is_some() {
+    if crate::devtools::scripted() {
         return eprintln!("notification: {title} / {body}");
     }
     let q = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
@@ -321,8 +336,10 @@ impl Workspace {
         let subs = vec![
             cx.subscribe(&settings_filter, |_, _, ev: &TextFieldEvent, cx| if matches!(ev, TextFieldEvent::Changed) { cx.notify(); }),
             cx.observe_window_bounds(window, |this, window, cx| crate::quick_note::remember(window, this.quick_note, cx)),
+            // The system switched between light and dark (or the app's own look changed).
+            cx.observe_window_appearance(window, |this, _, cx| if crate::settings::sync_dark(cx) { crate::settings::refresh_all(this, cx); }),
             cx.observe_window_activation(window, |this, window, cx| {
-                if window.is_window_active() { if let Some(id) = &this.current { crate::quick_note::used(id, cx); } this.entries = this.store.list(); this.sort(); cx.notify(); }
+                if window.is_window_active() { if let Some(id) = &this.current { crate::quick_note::used(id, cx); } this.entries = this.store.list(); this.sort(); crate::update::check_if_stale(cx); cx.notify(); }
                 else { this.cancel_shortcut_recording(cx); this.flush(cx); }
             }),
             cx.subscribe_in(&search, window, |this, _, ev: &TextFieldEvent, window, cx| {
@@ -347,7 +364,10 @@ impl Workspace {
             // go through `save_before` and ask when the save fails.
             cx.on_app_quit(|this, cx| {
                 crate::quick_note::persist(cx);
-                this.flush(cx);
+                if !this.flush(cx) && let Some(ed) = &this.editor
+                    && let Err(error) = this.store.recover_later(&ed.read(cx).core.doc) {
+                    crate::logging::write(&format!("Could not preserve unsaved document: {error:#}"));
+                }
                 async {}
             }),
         ];
@@ -422,6 +442,7 @@ impl Workspace {
             export_md: None,
             focus: cx.focus_handle(),
             save_task: None,
+            dirty_since: None,
             unsaved: false,
             after_save: None,
             editor_sub: None,
@@ -429,9 +450,12 @@ impl Workspace {
         };
         ws.sort();
         ws.load_home();
+        // An empty library opens on 主页's empty state; only a quick note
+        // window starts a document of its own.
         match document.or_else(|| (!quick).then(|| ws.entries.first().map(|e| e.id.clone())).flatten()) {
             Some(id) => ws.open(&id, window, cx),
-            None => ws.new_doc(window, cx),
+            None if quick => ws.new_doc(window, cx),
+            None => ws.view = View::Home,
         }
         // Kept in the top bar (not just a toast): the user should notice.
         let warnings = ws.store.take_warnings();
@@ -651,12 +675,13 @@ impl Workspace {
         self.row_menu = None;
         if self.current.is_none() {
             // Stay on 主页 / 回收站 if that's where the delete came from.
+            // The last document gone leaves the library empty (主页's empty
+            // state), not a new 未命名 document.
             let view = self.view;
             match self.entries.first().map(|e| e.id.clone()) {
-                Some(next) => self.open(&next, window, cx),
-                None => self.new_doc(window, cx),
+                Some(next) => { self.open(&next, window, cx); self.view = view; }
+                None => self.view = if view == View::Doc { View::Home } else { view },
             }
-            self.view = view;
         }
         self.sync_sub_pages(cx);
         if self.view == View::Trash {
@@ -826,7 +851,15 @@ impl Workspace {
 
     fn schedule_save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.status = SaveStatus::Saving;
+        if !self.unsaved || self.dirty_since.is_none() {
+            self.dirty_since = Some(Instant::now());
+        }
         self.unsaved = true;
+        // Each edit replaces the timer (dropping a Task cancels it), so steady
+        // typing would put the save off for as long as it lasts: the deadline
+        // caps that at SAVE_MAX_DELAY after the oldest unsaved edit.
+        let left = SAVE_MAX_DELAY.saturating_sub(self.dirty_since.map_or(Duration::ZERO, |t| t.elapsed()));
+        let delay = SAVE_DELAY.min(left);
         // Keep the list title live while typing; the body/snippet updates on save.
         if let (Some(id), Some(ed)) = (&self.current, &self.editor) {
             let title = ed.read(cx).core.doc.title.text.clone();
@@ -835,7 +868,7 @@ impl Workspace {
             }
         }
         self.save_task = Some(cx.spawn_in(window, async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(500)).await;
+            cx.background_executor().timer(delay).await;
             let _ = this.update(cx, |w, cx| w.flush(cx));
         }));
         cx.notify();
@@ -890,6 +923,8 @@ impl Workspace {
             }
             Err(e) => self.status = SaveStatus::Failed(crate::localized_format!("保存失败：{}", "Could not save: {}", crate::settings::diagnostic(&e.to_string()))),
         }
+        // A failed save tries again SAVE_MAX_DELAY after this attempt, not on every keystroke.
+        self.dirty_since = self.unsaved.then(Instant::now);
         cx.notify();
         !self.unsaved
     }
@@ -917,13 +952,50 @@ impl Workspace {
                 return;
             }
         } else {
-            self.unsaved = false;
-            self.status = SaveStatus::Idle;
+            let Some(id) = self.current.clone() else { return };
+            match self.store.load_for_edit(&id, false) {
+                Ok(doc) => {
+                    if let Some(ed) = &self.editor {
+                        ed.update(cx, |e, cx| e.receive_document(&crate::editor::core::Core::new(doc), cx));
+                    }
+                    self.sync_document(window, cx);
+                    self.save_task = None;
+                    self.unsaved = false;
+                    self.status = SaveStatus::Idle;
+                    self.dirty_since = None;
+                    self.entries = self.store.list();
+                    self.sort();
+                }
+                Err(e) => {
+                    self.status = SaveStatus::Failed(e.to_string());
+                    self.confirm = Some(Confirm::SaveFailed);
+                    return;
+                }
+            }
         }
         if let Some(then) = self.after_save.take() {
             then(self, window, cx);
         }
         cx.notify();
+    }
+
+    pub(crate) fn save_failed_copy(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ed) = &self.editor else { return };
+        let mut doc = ed.read(cx).core.doc.clone();
+        doc.title = crate::model::RichText::plain(format!("{}{}", doc.title.text, crate::settings::tr("（恢复副本）", " (recovered copy)")));
+        match self.store.create_from(&doc) {
+            Ok(_) => {
+                self.entries = self.store.list();
+                self.sort();
+                self.confirm = None;
+                self.resolve_save_failed(false, window, cx);
+            }
+            Err(e) => {
+                self.status = SaveStatus::Failed(e.to_string());
+                self.confirm = Some(Confirm::SaveFailed);
+                cx.notify();
+            }
+        }
     }
 
     /// The error of the last failed save, for the 保存失败 dialog.
@@ -1193,7 +1265,7 @@ impl Workspace {
                     })
                     .child(
                         seg("doc-search", "search")
-                            .tip_label(crate::settings::text("搜索(⌘ + J)").into(), TipSide::Below)
+                            .tip_label(crate::shortcuts::keys(crate::settings::text("搜索(⌘ + J)")).into(), TipSide::Below)
                             .on_click(cx.listener(|_, _, window, cx| window.dispatch_action(Box::new(FocusSearch), cx))),
                     )
                     .child(
@@ -1210,6 +1282,9 @@ pub(crate) const HEADER_ACTIONS_H: f32 = 32.;
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Clicks no longer take focus from the editor (see the root's mouse
+        // down), so leaving the document hands it back to the window's keys.
+        if self.view != View::Doc && self.editor.as_ref().is_some_and(|e| e.read(cx).focus.is_focused(window)) { window.focus(&self.focus); }
         self.native_sidebar.sync(if self.sidebar_open { self.sidebar_w(window) } else { 0. }, window);
         let sidebar = if self.sidebar_open { Some(if matches!(self.view, View::Settings | View::Trash) { self.render_settings_sidebar(window, cx) } else { self.render_sidebar(window, cx) }) } else { None };
         let row_menu = self.render_row_menu(window, cx);
@@ -1265,6 +1340,13 @@ impl Render for Workspace {
             .id("workspace")
             .key_context("Workspace")
             .track_focus(&self.focus)
+            // A click on what takes no input (title bar, page margins, the
+            // sidebar's blank space) leaves the caret in the document, also
+            // the click that brings the window back (#59). Runs before the
+            // root takes focus; anything inside that takes focus did so first.
+            .on_mouse_down(MouseButton::Left, cx.listener(|w, _, window, cx| {
+                if w.view == View::Doc && w.editor.as_ref().is_some_and(|e| e.read(cx).focus.is_focused(window)) { window.prevent_default(); }
+            }))
             .relative()
             .size_full()
             .flex()
@@ -1282,6 +1364,7 @@ impl Render for Workspace {
             .on_action(|_: &ToggleFullScreen, window, _| window.toggle_fullscreen())
             .on_action(cx.listener(|w, _: &OpenSettings, _, cx| w.show_view(View::Settings, cx)))
             .on_action(cx.listener(|w, _: &OpenAbout, _, cx| w.open_settings(crate::settings::Page::About, cx)))
+            .on_action(cx.listener(|w, _: &CheckForUpdates, _, cx| { w.open_settings(crate::settings::Page::About, cx); crate::update::check(true, cx); }))
             .on_action(cx.listener(|w, _: &GoHome, _, cx| w.show_view(View::Home, cx)))
             .on_action(cx.listener(|w, _: &NewDoc, window, cx| w.new_doc(window, cx)))
             .on_action(cx.listener(|w, _: &ImportDoc, window, cx| w.open_import(window, cx)))
@@ -1365,5 +1448,70 @@ impl Render for Workspace {
             .children(search)
             .children(resize_overlay)
             .children(toast)
+    }
+}
+
+/// Fault injection against real window/save code, available only in the harness build.
+#[cfg(feature = "devtools")]
+#[derive(Clone)]
+struct SaveSafetyQa(Vec<(WindowHandle<Workspace>, String)>);
+#[cfg(feature = "devtools")]
+impl Global for SaveSafetyQa {}
+
+#[cfg(feature = "devtools")]
+pub(crate) fn check_save_safety(phase: &str, cx: &mut App) {
+    use crate::model::{Document, RichText};
+    let doc = |title: &str| Document { title: RichText::plain(title), ..Default::default() };
+    if phase == "setup" {
+        let mut store = cx.global::<SharedStore>().clone();
+        let mut windows = vec![];
+        for name in ["A", "B", "C"] {
+            let id = store.create_from(&doc(name)).unwrap();
+            let open_id = id.clone();
+            let handle = cx.open_window(WindowOptions { focus: false, ..Default::default() }, |window, cx| {
+                cx.new(|cx| Workspace::new_document_window(Some(open_id), window, cx))
+            }).unwrap();
+            handle.update(cx, |ws, _, cx| {
+                ws.editor.as_ref().unwrap().update(cx, |e, cx| e.receive_document(&crate::editor::core::Core::new(doc(&format!("local-{name}"))), cx));
+                ws.unsaved = true;
+            }).unwrap();
+            if name != "C" {
+                std::fs::write(crate::store::Store::root_dir().join("docs").join(format!("{id}.xml")), crate::docxml::serialize(&doc(&format!("disk-{name}")))).unwrap();
+            }
+            windows.push((handle, id));
+        }
+        quit(cx);
+        for (handle, _) in &windows[..2] {
+            handle.update(cx, |ws, _, _| assert!(ws.unsaved && matches!(ws.confirm, Some(Confirm::SaveFailed)))).unwrap();
+        }
+        assert_eq!(store.load(&windows[2].1).unwrap().title.text, "local-C");
+        windows[0].0.update(cx, |ws, window, cx| {
+            ws.resolve_save_failed(true, window, cx);
+            assert!(ws.unsaved);
+            ws.confirm = None;
+            ws.resolve_save_failed(false, window, cx);
+            assert!(!ws.unsaved);
+            assert_eq!(ws.editor.as_ref().unwrap().read(cx).core.doc.title.text, "disk-A");
+        }).unwrap();
+        cx.set_global(SaveSafetyQa(windows));
+        eprintln!("save-safety: all windows checked; successful sibling saved; retry and reload checked");
+    } else {
+        let windows = cx.global::<SaveSafetyQa>().0.clone();
+        windows[1].0.update(cx, |ws, window, cx| {
+            assert!(ws.unsaved && matches!(ws.confirm, Some(Confirm::SaveFailed)));
+            ws.after_save = None;
+            ws.save_failed_copy(window, cx);
+            assert!(!ws.unsaved);
+            assert_eq!(ws.editor.as_ref().unwrap().read(cx).core.doc.title.text, "disk-B");
+            assert!(ws.store.list().iter().any(|e| e.title.starts_with("local-B")));
+        }).unwrap();
+        windows[0].0.update(cx, |ws, _, cx| {
+            ws.editor.as_ref().unwrap().update(cx, |e, cx| e.receive_document(&crate::editor::core::Core::new(doc("after-reload")), cx));
+            ws.unsaved = true;
+            assert!(ws.flush(cx));
+            assert_eq!(ws.store.load(ws.current.as_ref().unwrap()).unwrap().title.text, "after-reload");
+        }).unwrap();
+        eprintln!("save-safety: PASS; remaining conflict blocked quit; copy preserved; edit after reload saved cleanly");
+        for (handle, _) in windows { handle.update(cx, |_, window, _| window.remove_window()).unwrap(); }
     }
 }

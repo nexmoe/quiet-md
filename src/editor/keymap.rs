@@ -174,7 +174,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-shift-up", MoveBlockUp, c),
         KeyBinding::new("ctrl-shift-down", MoveBlockDown, c),
     ]);
-    // Windows' older clipboard keys (Ctrl+Insert after `shortcuts::windows_binding`).
-    #[cfg(target_os = "windows")]
+    // PC clipboard keys (Ctrl+Insert after `shortcuts::pc_binding`).
+    #[cfg(not(target_os = "macos"))]
     cx.bind_keys([KeyBinding::new("shift-delete", Cut, c), KeyBinding::new("cmd-insert", Copy, c), KeyBinding::new("shift-insert", Paste, c)]);
 }

@@ -5,9 +5,10 @@
 use gpui::{BoxShadow, Hsla, Rgba, point, px, rgb};
 
 pub fn c(hex: u32) -> Hsla {
-    rgb(hex).into()
+    crate::theme::adapt(rgb(hex).into())
 }
 
+/// A literal colour (shadows); `ta` is the adapted one, as in theme.rs.
 pub fn rgbaf(r: u8, g: u8, b: u8, a: f32) -> Hsla {
     Rgba { r: r as f32 / 255., g: g as f32 / 255., b: b as f32 / 255., a }.into()
 }
@@ -83,6 +84,7 @@ pub mod ud {
 }
 
 fn shadow(a: f32, y: f32, blur: f32, spread: f32) -> BoxShadow {
+    let a = if crate::theme::dark() { (a * 3.).min(0.6) } else { a };
     BoxShadow { color: rgbaf(31, 35, 41, a), offset: point(px(0.), px(y)), blur_radius: px(blur), spread_radius: px(spread) }
 }
 
@@ -106,8 +108,11 @@ pub fn shadow_s4_down() -> Vec<BoxShadow> {
     vec![shadow(0.04, 8., 24., 8.), shadow(0.04, 6., 12., 0.), shadow(0.06, 4., 8., -8.)]
 }
 
-pub const UI_FONT: &str = ".SystemUIFont";
+pub const UI_FONT: &str = crate::theme::UI_FONT;
+#[cfg(not(target_os = "linux"))]
 pub const MONO_FONT: &str = "Menlo";
+#[cfg(target_os = "linux")]
+pub const MONO_FONT: &str = crate::theme::MONO_FONT;
 
 pub struct Theme;
 
@@ -126,19 +131,19 @@ impl Theme {
     pub fn bg_body() -> Hsla { c(ud::N00) }
     pub fn bg_overlay() -> Hsla { c(ud::N50) }
     /// `--bg-content-base`: the gray behind search result cards.
-    pub fn line_divider() -> Hsla { rgbaf(31, 35, 41, 0.15) }
+    pub fn line_divider() -> Hsla { ta(31, 35, 41, 0.15) }
     pub fn line_border() -> Hsla { c(ud::N300) }
-    pub fn fill_hover() -> Hsla { rgbaf(31, 35, 41, 0.08) }
-    pub fn fill_hover_strong() -> Hsla { rgbaf(31, 35, 41, 0.10) }
-    pub fn fill_pressed() -> Hsla { rgbaf(31, 35, 41, 0.12) }
-    pub fn fill_active() -> Hsla { rgbaf(20, 86, 240, 0.15) }
+    pub fn fill_hover() -> Hsla { ta(31, 35, 41, 0.08) }
+    pub fn fill_hover_strong() -> Hsla { ta(31, 35, 41, 0.10) }
+    pub fn fill_pressed() -> Hsla { ta(31, 35, 41, 0.12) }
+    pub fn fill_active() -> Hsla { ta(20, 86, 240, 0.15) }
     pub fn fill_turninto_active() -> Hsla { c(ud::B100) }
-    pub fn selection() -> Hsla { rgbaf(20, 86, 240, 0.18) }
+    pub fn selection() -> Hsla { ta(20, 86, 240, 0.18) }
     /// `--ccmtoken-doc-block-bg-hover`: a block whose handle menu is open
     /// (`.block.hovered`, radius 8), a selected table's cells.
-    pub fn block_hover() -> Hsla { rgbaf(20, 86, 240, 0.10) }
+    pub fn block_hover() -> Hsla { ta(20, 86, 240, 0.10) }
     /// `--ccmtoken-doc-block-bg-selected`: selected blocks' `.selected-mask` (radius 6).
-    pub fn block_selected() -> Hsla { rgbaf(20, 86, 240, 0.18) }
+    pub fn block_selected() -> Hsla { ta(20, 86, 240, 0.18) }
     /// Handle while hovered / its menu is open (fill-hover over white, opaque).
     pub fn handle_active() -> Hsla { c(ud::N200) }
     /// Insert-size picker cells: `--bg-base` in a 2px `--N200` frame; picked
@@ -148,13 +153,13 @@ impl Theme {
     pub fn size_cell_active() -> Hsla { c(ud::B300) }
     pub fn size_cell_disabled() -> Hsla { c(ud::B100) }
     /// Hairline drawn inside font-color swatches (and the "none" swatch).
-    pub fn swatch_border() -> Hsla { rgbaf(31, 35, 41, 0.08) }
+    pub fn swatch_border() -> Hsla { ta(31, 35, 41, 0.08) }
     /// `--ccmtoken-doc-block-bg-area`: hovered / focused to-do row.
-    pub fn block_bg_area() -> Hsla { rgbaf(100, 106, 115, 0.05) }
+    pub fn block_bg_area() -> Hsla { ta(100, 106, 115, 0.05) }
     /// Done to-do text: text-caption at the 0.7 opacity used on done spans.
-    pub fn todo_done() -> Hsla { rgbaf(100, 106, 115, 0.7) }
-    pub fn scrollbar_thumb() -> Hsla { rgbaf(31, 35, 41, 0.3) }
-    pub fn shadow() -> Hsla { rgbaf(31, 35, 41, 0.10) }
+    pub fn todo_done() -> Hsla { ta(100, 106, 115, 0.7) }
+    pub fn scrollbar_thumb() -> Hsla { ta(31, 35, 41, 0.3) }
+    pub fn shadow() -> Hsla { ta(31, 35, 41, 0.10) }
     /// `--B200`: ring of a code block / callout whose handle menu is open.
     pub fn code_hover_ring() -> Hsla { c(ud::B200) }
     pub fn quote_bar() -> Hsla { c(ud::N400) }
@@ -174,7 +179,7 @@ impl Theme {
 pub use crate::palette::{HUES, FONT_COLORS, BG_COLORS, CALLOUT_BG_COLORS, CELL_BG_COLORS, bg_canon};
 
 fn hsla(c: crate::palette::Rgba) -> Hsla {
-    rgbaf(c.r, c.g, c.b, c.a)
+    ta(c.r, c.g, c.b, c.a)
 }
 
 pub fn text_color(name: &str) -> Option<Hsla> {
@@ -182,7 +187,7 @@ pub fn text_color(name: &str) -> Option<Hsla> {
 }
 
 pub fn bg_color(name: &str) -> Option<Hsla> {
-    crate::palette::bg_color(name).map(hsla)
+    crate::palette::bg_color(name).map(|c| crate::theme::mark(crate::theme::rgbaf(c.r, c.g, c.b, c.a)))
 }
 
 pub fn block_bg(name: &str) -> Option<Hsla> {
@@ -237,13 +242,13 @@ pub fn heading_metrics(level: u8) -> BlockMetrics {
 
 pub const TITLE: BlockMetrics = BlockMetrics { size: 34.0, line_height: 55.25, mt: 0.0, mb: 0.0 };
 
-pub use crate::theme::{craft, ca, mix, shadow_button};
+pub use crate::theme::{craft, ca, mix, ta, shadow_button};
 
 impl Theme { pub fn link_hover() -> Hsla { c(ud::old::B600) } }
 
 impl Theme { pub fn table_line() -> Hsla { ca(craft::N1000, 0.09) } }
 
-impl Theme { pub fn window() -> Hsla { if crate::native_header::supported() { ca(craft::WINDOW, 0.) } else { ca(craft::WINDOW, 0.84) } } }
+impl Theme { pub fn window() -> Hsla { crate::theme::Theme::window() } }
 
 impl Theme { pub fn sidebar_text() -> Hsla { ca(craft::N900, 0.85) } }
 

@@ -262,7 +262,7 @@ impl Editor {
                 .items_center()
                 .gap(px(8.))
                 .rounded(px(9.))
-                .bg(Theme::bg_body())
+                .bg(crate::theme::raised(Theme::bg_body()))
                 .border_1()
                 .border_color(if focused { Theme::primary() } else { Theme::line_border() })
                 .child(field.clone())

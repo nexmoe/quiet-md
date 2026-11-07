@@ -232,7 +232,7 @@ impl Workspace {
             .rounded(px(9.))
             .border_1()
             .border_color(Theme::line_border())
-            .bg(Theme::bg_body())
+            .bg(crate::theme::raised(Theme::bg_body()))
             .child(icon("search", 15., Theme::text_caption()))
             .child(div().flex_1().min_w_0().ml(px(6.)).flex().child(dlg.search.clone()));
         // The location column reads like a sidebar: a grey surface and

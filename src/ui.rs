@@ -43,7 +43,7 @@ pub fn toast_el(kind: ToastKind, msg: &SharedString, t0: std::time::Instant, win
         .px(px(14.))
         .py(px(10.))
         .rounded(px(12.))
-        .bg(Theme::bg_body())
+        .bg(crate::theme::raised(Theme::bg_body()))
         .border_1()
         .border_color(Theme::line_border())
         .shadow(theme::shadow_panel())
@@ -81,7 +81,7 @@ pub fn toast_el(kind: ToastKind, msg: &SharedString, t0: std::time::Instant, win
 /// radius 12, soft drop.
 pub fn popover() -> Div {
     div()
-        .bg(Theme::popover_bg())
+        .bg(crate::theme::raised(Theme::popover_bg()))
         .border_1()
         .border_color(Theme::line_border())
         .rounded(px(MENU_RADIUS))
@@ -96,7 +96,7 @@ pub fn pill() -> Div {
     div()
         .flex_none()
         .rounded(px(12.))
-        .bg(Theme::bg_body())
+        .bg(crate::theme::raised(Theme::bg_body()))
         .border_1()
         .border_color(Theme::button_border())
         .shadow(theme::shadow_button())
@@ -127,7 +127,7 @@ pub fn scrim() -> Hsla {
 
 /// The modal dialog: white, radius 16, deep soft drop.
 pub fn dialog(id: &'static str) -> Stateful<Div> {
-    div().id(id).occlude().rounded(px(16.)).bg(Theme::bg_body()).shadow(theme::shadow_dialog()).font_family(theme::UI_FONT).text_color(Theme::text())
+    div().id(id).occlude().rounded(px(16.)).bg(crate::theme::raised(Theme::bg_body())).shadow(theme::shadow_dialog()).font_family(theme::UI_FONT).text_color(Theme::text())
 }
 
 /// The primary button: the accent, a white 13pt semibold label, 30 tall, radius 9.
@@ -165,7 +165,7 @@ pub fn secondary_button(id: &'static str, label: &'static str) -> Stateful<Div> 
         .justify_center()
         .rounded(px(9.))
         .cursor_pointer()
-        .bg(Theme::bg_body())
+        .bg(crate::theme::raised(Theme::bg_body()))
         .border_1()
         .border_color(Theme::button_border())
         .shadow(theme::shadow_button())
@@ -268,6 +268,8 @@ const TIP_ARROW: f32 = 5.;
 const TIP_PAD: f32 = 12.;
 const TIP_LINE: f32 = 18.;
 const TIP_BG: u32 = 0x2a2c2f;
+/// Tooltips stay dark in both looks (a step lighter on the dark page).
+fn tip_bg() -> Hsla { if theme::dark() { theme::rgbaf(0x3a, 0x3b, 0x3d, 1.) } else { theme::rgbaf((TIP_BG >> 16) as u8, (TIP_BG >> 8) as u8, TIP_BG as u8, 1.) } }
 
 impl Render for Tooltip {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -276,8 +278,8 @@ impl Render for Tooltip {
             .px(px(10.))
             .py(px(6.))
             .rounded(px(7.))
-            .bg(theme::c(TIP_BG))
-            .text_color(theme::c(craft::N00))
+            .bg(tip_bg())
+            .text_color(gpui::white())
             .text_size(px(12.))
             .line_height(px(TIP_LINE))
             .font_family(theme::UI_FONT)
@@ -354,7 +356,7 @@ impl Render for Tooltip {
                 arrow(&mut p);
                 p.close();
                 if let Ok(path) = p.build() {
-                    window.paint_path(path, theme::c(TIP_BG));
+                    window.paint_path(path, tip_bg());
                 }
             },
         )
@@ -415,16 +417,23 @@ pub trait TitleBarExt: InteractiveElement + Sized {
 
 impl<E: InteractiveElement> TitleBarExt for E {}
 
-pub(crate) const WINDOW_CONTROLS_W: f32 = if cfg!(target_os = "windows") { 163. } else { 0. };
+pub(crate) const WINDOW_CONTROLS_W: f32 = if cfg!(any(target_os = "windows", target_os = "linux")) { 163. } else { 0. };
 pub(crate) fn header_right_inset() -> f32 {
-    if cfg!(target_os = "windows") { WINDOW_CONTROLS_W } else { (crate::app::HEADER_H - crate::app::HEADER_ACTIONS_H) / 2. }
+    if cfg!(any(target_os = "windows", target_os = "linux")) { WINDOW_CONTROLS_W } else { (crate::app::HEADER_H - crate::app::HEADER_ACTIONS_H) / 2. }
 }
 
 pub(crate) fn window_controls(window: &Window) -> Option<Div> {
-    if !cfg!(target_os = "windows") { return None; }
+    if !cfg!(any(target_os = "windows", target_os = "linux")) { return None; }
     let button = |id: &'static str, area: WindowControlArea, label: &'static str| {
         div().id(id).size(px(crate::app::HEADER_ACTIONS_H)).mx(px(7.)).rounded(px(8.)).flex_none().flex().items_center().justify_center().cursor_pointer()
-            .occlude().window_control_area(area).hover(|s| s.bg(Theme::fill_hover())).active(|s| s.bg(Theme::fill_pressed())).tip(label, None)
+            .occlude().no_drag()
+            .when(cfg!(target_os = "windows"), |d| d.window_control_area(area))
+            .when(cfg!(target_os = "linux"), |d| d.on_click(move |_, window, cx| match area {
+                WindowControlArea::Min => window.minimize_window(),
+                WindowControlArea::Max => window.zoom_window(),
+                WindowControlArea::Close => window.dispatch_action(Box::new(crate::app::CloseWindow), cx),
+                WindowControlArea::Drag => {},
+            })).hover(|s| s.bg(Theme::fill_hover())).active(|s| s.bg(Theme::fill_pressed())).tip(label, None)
     };
     let maximized = window.is_maximized();
     // Native hit-test areas preserve Snap Layouts and the normal WM_CLOSE save guard.
@@ -825,6 +834,33 @@ pub fn continuous_corner_mask(radius: f32, color: Hsla) -> impl IntoElement {
     }).absolute().inset_0()
 }
 
+/// A capsule filled to `fraction` from the left, its edge a moving wave (the
+/// update pill's download progress). Redraws every frame while shown.
+pub fn wave_fill(fraction: f32, color: Hsla) -> impl IntoElement {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let t = START.get_or_init(std::time::Instant::now).elapsed().as_secs_f32();
+    canvas(|bounds, _, _| bounds, move |_, b, window, _| {
+        window.request_animation_frame();
+        let f = fraction.clamp(0., 1.);
+        if f <= 0. { return }
+        let (x, y) = (f32::from(b.left()), f32::from(b.top()));
+        let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
+        let r = h / 2.;
+        // The capsule's left and right walls at height v (0 = top).
+        let wall = |v: f32| (r * r - (v - r).powi(2)).max(0.).sqrt();
+        // A 2pt swell, one crest per pill height, drifting downwards; flat when full.
+        let amp = if f >= 1. { 0. } else { 2. };
+        let edge = |v: f32| (x + f * w + amp * (std::f32::consts::TAU * v / h - t * 5.).sin()).clamp(x + r - wall(v), x + w - r + wall(v));
+        const N: usize = 24;
+        let mut path = PathBuilder::fill();
+        path.move_to(point(px(edge(0.)), px(y)));
+        for i in 1..=N { let v = h * i as f32 / N as f32; path.line_to(point(px(edge(v)), px(y + v))); }
+        for i in (0..=N).rev() { let v = h * i as f32 / N as f32; path.line_to(point(px(x + r - wall(v)), px(y + v))); }
+        path.close();
+        if let Ok(path) = path.build() { window.paint_path(path, color); }
+    }).absolute().inset_0()
+}
+
 pub fn continuous_page(radius: f32) -> Div { continuous_surface(radius, Theme::bg_body()) }
 
 pub fn continuous_surface(radius: f32, color: Hsla) -> Div {
@@ -873,5 +909,5 @@ pub(crate) fn checkbox(on: bool) -> Div {
         .justify_center()
         .rounded(px(4.))
         .when(on, |d| d.bg(Theme::primary()).child(icon("todo-check", 12., Theme::bg_body())))
-        .when(!on, |d| d.border_1().border_color(Theme::todo_box()).bg(Theme::bg_body()))
+        .when(!on, |d| d.border_1().border_color(Theme::todo_box()).bg(crate::theme::raised(Theme::bg_body())))
 }

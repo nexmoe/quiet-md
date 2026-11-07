@@ -424,7 +424,7 @@ impl Workspace {
             .flex()
             .flex_col()
             .rounded(px(16.))
-            .bg(Theme::bg_body())
+            .bg(crate::theme::raised(Theme::bg_body()))
             .shadow(theme::shadow_dialog())
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(input)

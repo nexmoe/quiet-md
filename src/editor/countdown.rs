@@ -330,8 +330,8 @@ impl R<'_> {
                         .border_2()
                         .rounded(px(6.))
                         .cursor_pointer()
-                        .when(active, |d| d.border_color(accent()).bg(gpui::white()))
-                        .when(!active, |d| d.border_color(sw).bg(sw).hover(|s| s.border_color(rim_hover()).bg(gpui::white())))
+                        .when(active, |d| d.border_color(accent()).bg(crate::theme::raised(gpui::white())))
+                        .when(!active, |d| d.border_color(sw).bg(sw).hover(|s| s.border_color(rim_hover()).bg(crate::theme::raised(gpui::white()))))
                         .child(div().size(px(16.)).rounded(px(4.)).bg(sw))
                         .tip_above(COLOR_NAMES[i], None)
                         .on_mouse_down(
@@ -621,7 +621,7 @@ impl Editor {
                 .cursor_pointer()
                 .when(by_date, |d| d.bg(theme::c(craft::N200)).border_color(Theme::line_border()))
                 .when(!by_date, |d| {
-                    d.bg(Theme::bg_body()).border_color(if active { accent() } else { Theme::line_border() }).when(!active, |d| d.hover(|s| s.border_color(rim_hover())))
+                    d.bg(crate::theme::raised(Theme::bg_body())).border_color(if active { accent() } else { Theme::line_border() }).when(!active, |d| d.hover(|s| s.border_color(rim_hover())))
                 })
                 .child(div().w_full().child(self.cd.fields[i].clone()))
                 .child(track(bounds, key))
@@ -679,7 +679,7 @@ impl Editor {
             .cursor_pointer()
             .when(!by_date, |d| d.bg(theme::c(craft::N200)).border_color(Theme::line_border()).text_color(theme::c(craft::N500)))
             .when(by_date, |d| {
-                d.bg(Theme::bg_body()).border_color(if open.is_some() { accent() } else { Theme::line_border() }).when(open.is_none(), |d| d.hover(|s| s.border_color(rim_hover())))
+                d.bg(crate::theme::raised(Theme::bg_body())).border_color(if open.is_some() { accent() } else { Theme::line_border() }).when(open.is_none(), |d| d.hover(|s| s.border_color(rim_hover())))
             })
             .child(track(bounds, "cd-stamp"))
             .child(
@@ -726,7 +726,7 @@ impl Editor {
             .justify_center()
             .rounded(px(4.))
             .when(notify, |d| d.bg(accent()).child(icon("check", 12., gpui::white())))
-            .when(!notify, |d| d.border_1().border_color(Theme::todo_box()).bg(gpui::white()));
+            .when(!notify, |d| d.border_1().border_color(Theme::todo_box()).bg(crate::theme::raised(gpui::white())));
         // Buttons: 30 tall, radius 9; primary the accent in white
         // semibold, secondary white with a hairline and a 1px drop.
         let button = |key: &'static str, label: &'static str, primary: bool| {
@@ -751,7 +751,7 @@ impl Editor {
                         .active(|s| s.bg(theme::c(craft::B700)).border_color(theme::c(craft::B700)))
                 })
                 .when(!primary, |d| {
-                    d.bg(gpui::white()).border_color(Theme::button_border()).shadow(theme::shadow_button()).hover(|s| s.bg(theme::c(craft::N100))).active(|s| s.bg(theme::c(craft::N200)))
+                    d.bg(crate::theme::raised(gpui::white())).border_color(Theme::button_border()).shadow(theme::shadow_button()).hover(|s| s.bg(theme::c(craft::N100))).active(|s| s.bg(theme::c(craft::N200)))
                 })
                 .child(label)
         };
@@ -806,7 +806,7 @@ impl Editor {
             .relative()
             .w(px(600.))
             .rounded(px(16.))
-            .bg(Theme::bg_body())
+            .bg(crate::theme::raised(Theme::bg_body()))
             .shadow(theme::shadow_dialog())
             .occlude()
             .text_size(px(13.))

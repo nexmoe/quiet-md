@@ -328,7 +328,7 @@ fn checkbox(on: bool) -> Div {
         .justify_center()
         .rounded(px(4.))
         .when(on, |d| d.bg(Theme::primary()).child(icon("check", 12., gpui::white())))
-        .when(!on, |d| d.border_1().border_color(Theme::todo_box()).bg(gpui::white()))
+        .when(!on, |d| d.border_1().border_color(Theme::todo_box()).bg(crate::theme::raised(gpui::white())))
 }
 
 /// `.reminder-popover-wrapper` box: the second-level panel (white,
@@ -618,7 +618,7 @@ impl Editor {
                 .rounded(px(9.))
                 .border_1()
                 .border_color(if active { Theme::primary() } else { Theme::line_border() })
-                .bg(Theme::bg_body())
+                .bg(crate::theme::raised(Theme::bg_body()))
                 .cursor_pointer()
                 .when(!active, |d| d.hover(|s| s.border_color(crate::editor_theme::ca(craft::N1000, 0.16))))
                 .child(track(&self.rm.selects[ix]))

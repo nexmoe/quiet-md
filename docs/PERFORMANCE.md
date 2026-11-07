@@ -39,7 +39,7 @@ bench "wheel 900 500 40" x100: step [p50 0.01 p95 0.02 max 0.02] frame [p50 2.08
 测试只使用临时文档库，不会碰 `~/Documents/Quiet.md`。
 
 ```sh
-cargo build --release --locked
+cargo build --release --locked --features devtools
 python3 tools/promo/gen_library.py /tmp/quiet-perf/library
 printf '{"english":true,"theme":"craft"}\n' > /tmp/quiet-perf/library/preferences.json
 python3 tools/harness/run.py tools/harness/examples/readme-performance.txt /tmp/quiet-perf/library /tmp/quiet-perf/run

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 /// 导出 Markdown 设置.
 #[derive(Default)]
 pub struct Options<'a> {
+    pub library_root: Option<&'a std::path::Path>,
     /// Titles of the document's child pages (what 子页面列表 shows).
     pub sub_pages: &'a [String],
     /// 所有内容: images are kept, local ones copied into this folder next to
@@ -16,6 +17,7 @@ pub struct Options<'a> {
 }
 
 pub struct Export {
+    pub missing: usize,
     pub text: String,
     /// Local image files to copy: (source, path relative to the .md file).
     pub files: Vec<(PathBuf, String)>,
@@ -27,7 +29,7 @@ pub fn to_markdown(doc: &Document) -> String {
 }
 
 pub fn export(doc: &Document, opts: &Options) -> Export {
-    let mut w = Writer { opts, files: vec![] };
+    let mut w = Writer { opts, files: vec![], missing: 0 };
     let mut out = String::new();
     let title = doc.title.text.trim();
     if !title.is_empty() {
@@ -37,10 +39,11 @@ pub fn export(doc: &Document, opts: &Options) -> Export {
     let trimmed = out.trim_end().len();
     out.truncate(trimmed);
     out.push('\n');
-    Export { text: out, files: w.files }
+    Export { text: out, files: w.files, missing: w.missing }
 }
 
 struct Writer<'a> {
+    missing: usize,
     opts: &'a Options<'a>,
     files: Vec<(PathBuf, String)>,
 }
@@ -72,7 +75,7 @@ impl Writer<'_> {
     }
 
     fn block(&mut self, b: &Block, seq: u32) -> String {
-        let text = inline(&b.text);
+        let text = inline(&b.text, &mut |f| self.file_link(f));
         let nested = |w: &mut Self, head: String| -> String {
             if b.children.is_empty() {
                 return head;
@@ -103,22 +106,25 @@ impl Writer<'_> {
                 }
                 None => String::new(),
             },
-            BlockKind::Table(t) => table(t),
+            BlockKind::Table(t) => table(t, &mut |f| self.file_link(f)),
             BlockKind::Grid | BlockKind::Column { .. } => self.blocks(&b.children),
             // An add-on block: Markdown has nothing for it.
             BlockKind::Countdown(_) => String::new(),
-            BlockKind::File(f) => match self.opts.assets.filter(|_| f.src_kind == "path") {
-                Some(dir) => format!("[{}]({})", escape(&f.name), self.image(&f.src, dir).replace(' ', "%20")),
-                None => escape(&f.name),
-            },
+            BlockKind::File(f) => self.file_link(f).map(|url| format!("[{}]({url})", escape(&f.name))).unwrap_or_else(|| escape(&f.name)),
             BlockKind::SubPageList => {
                 self.opts.sub_pages.iter().map(|t| format!("- {}", escape(&crate::model::display_title(t)))).collect::<Vec<_>>().join("\n")
             }
             BlockKind::Raw { xml, .. } => match crate::docxml::raw_summary(xml) {
-                (text, Some(link)) => format!("[{}]({})", escape(if text.is_empty() { &link } else { &text }), link.replace(' ', "%20")),
-                (text, None) => escape(&text).replace('\n', "<br>"),
+                (text, Some(link)) if crate::paste::link_ok(&link) => format!("[{}]({})", escape(if text.is_empty() { &link } else { &text }), link.replace(' ', "%20")),
+                (text, _) => escape(&text).replace('\n', "<br>"),
             },
         }
+    }
+
+    fn file_link(&mut self, file: &FileBlock) -> Option<String> {
+        let dir = self.opts.assets.filter(|_| file.src_kind == "path")?;
+        let link = self.image(&file.src, dir);
+        (!link.is_empty()).then(|| link.replace(' ', "%20").replace(')', "%29").replace('(', "%28"))
     }
 
     /// The link for an image: remote ones stay remote, local files get a
@@ -128,7 +134,7 @@ impl Writer<'_> {
         if src.starts_with("http://") || src.starts_with("https://") {
             return src.to_string();
         }
-        let Some(path) = crate::store::image_path(src) else { return src.to_string() };
+        let Some(path) = crate::store::export_path_in(self.opts.library_root.unwrap_or(&crate::store::Store::root_dir()), src) else { self.missing += 1; return String::new() };
         if let Some((_, rel)) = self.files.iter().find(|(p, _)| *p == path) {
             return rel.clone();
         }
@@ -145,14 +151,14 @@ impl Writer<'_> {
     }
 }
 
-fn table(t: &Table) -> String {
+fn table(t: &Table, files: &mut impl FnMut(&FileBlock) -> Option<String>) -> String {
     let cols = t.rows.iter().map(|r| r.len()).max().unwrap_or(0).max(1);
-    let cell = |c: &TableCell| {
-        let parts: Vec<String> = c.blocks.iter().map(|b| inline(&b.text)).filter(|s| !s.is_empty()).collect();
+    let mut cell = |c: &TableCell| {
+        let parts: Vec<String> = c.blocks.iter().map(|b| inline(&b.text, files)).filter(|s| !s.is_empty()).collect();
         parts.join("<br>").replace('|', "\\|")
     };
-    let row = |r: &Vec<TableCell>| {
-        let mut cells: Vec<String> = r.iter().map(cell).collect();
+    let mut row = |r: &Vec<TableCell>| {
+        let mut cells: Vec<String> = r.iter().map(&mut cell).collect();
         cells.resize(cols, String::new());
         format!("| {} |", cells.join(" | "))
     };
@@ -195,7 +201,7 @@ struct Md {
     link: Option<String>,
 }
 
-fn inline(t: &RichText) -> String {
+fn inline(t: &RichText, files: &mut impl FnMut(&FileBlock) -> Option<String>) -> String {
     // Merge runs that only differ in marks Markdown can't express (colors).
     let mut runs: Vec<(Md, String)> = vec![];
     for (r, m) in t.spans() {
@@ -206,7 +212,7 @@ fn inline(t: &RichText) -> String {
                 Some(obj) => {
                     // An 打开超链接 button exports as a link.
                     let (text, link) = crate::docxml::raw_summary(&obj.xml);
-                    let s = match link.filter(|_| matches!(obj.kind, InlineKind::Button(_))) {
+                    let s = match link.filter(|l| matches!(obj.kind, InlineKind::Button(_)) && crate::paste::link_ok(l)) {
                         Some(l) => format!("[{text}]({l})"),
                         None => text,
                     };
@@ -215,13 +221,14 @@ fn inline(t: &RichText) -> String {
                 None => t.text[r].to_string(),
             },
         };
+        let file_link = m.inline.as_ref().and_then(|obj| match &obj.kind { InlineKind::File(f) => files(f), _ => None });
         let md = Md {
             bold: m.bold,
             italic: m.italic,
             strike: m.strike,
             underline: m.underline,
             code: m.code,
-            link: m.link.clone(),
+            link: file_link.or_else(|| m.link.clone().filter(|url| crate::paste::link_ok(url))),
         };
         match runs.last_mut() {
             Some((last, text)) if *last == md => text.push_str(&s),
@@ -274,6 +281,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn inline_attachments_export_links_and_copies_including_tables() {
+        let root = std::env::temp_dir().join(format!("quiet-export-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        std::fs::write(root.join("assets/report (1).pdf"), b"pdf").unwrap();
+        let file = FileBlock { src_kind: "path".into(), src: "assets/report (1).pdf".into(), name: "Report [1]".into(), view: FileView::Card };
+        let mut text = RichText::plain("before ");
+        text.push("\u{fffc}", Marks { inline: Some(crate::docxml::to_inline(InlineKind::File(file))), ..Default::default() });
+        text.push(" after", Marks::default());
+        let mut table = Table { col_widths: vec![], header_rows: 0, header_col: false, rows: vec![vec![TableCell::empty()]] };
+        table.rows[0][0].blocks = vec![Block::new(BlockKind::Text, text.clone())];
+        let doc = Document { blocks: vec![Block::new(BlockKind::Text, text), Block::new(BlockKind::Table(table), RichText::default())], ..Default::default() };
+        let out = export(&doc, &Options { assets: Some("out.assets"), library_root: Some(&root), ..Default::default() });
+        assert_eq!(out.files.len(), 1);
+        assert_eq!(out.missing, 0);
+        assert_eq!(out.text.matches("[Report \\[1\\]](out.assets/report%20%281%29.pdf)").count(), 2);
+        let plain = export(&doc, &Options { library_root: Some(&root), ..Default::default() });
+        assert!(plain.files.is_empty());
+        assert!(!plain.text.contains("out.assets"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn exports_common_blocks() {
         let mut bold = RichText::plain("a ");
         bold.push("bold ", Marks { bold: true, ..Default::default() });
@@ -304,6 +333,6 @@ mod tests {
     fn exports_tables() {
         let cell = |s: &str| TableCell { blocks: vec![Block::text(s)], ..TableCell::empty() };
         let t = Table { col_widths: vec![], header_rows: 1, header_col: false, rows: vec![vec![cell("a"), cell("b|c")], vec![cell("1")]] };
-        assert_eq!(table(&t), "| a | b\\|c |\n| --- | --- |\n| 1 |  |");
+        assert_eq!(table(&t, &mut |_| None), "| a | b\\|c |\n| --- | --- |\n| 1 |  |");
     }
 }

@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.3"
+  #define AppVersion "0.1.7"
 #endif
 #ifndef AppSource
   #define AppSource "..\..\target\release"
@@ -7,9 +7,9 @@
 
 [Setup]
 AppId={{59DC98EE-A136-40C9-A7BD-EB0CC50E37C2}
-AppName=quiet.md
+AppName=Quiet.md
 AppVersion={#AppVersion}
-AppPublisher=quiet.md
+AppPublisher=Quiet.md
 AppPublisherURL=https://github.com/s1dashu/quiet-md
 DefaultDirName={localappdata}\Programs\quiet.md
 DisableDirPage=no
@@ -45,8 +45,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
 SelectDirLabel3=Choose an install folder. Your notes are stored separately.
-SelectTasksLabel2=Make quiet.md easier to reach.
-FinishedLabel=quiet.md is ready. A quiet place for your notes.
+SelectTasksLabel2=Make Quiet.md easier to reach.
+FinishedLabel=Quiet.md is ready. A quiet place for your notes.
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
@@ -58,14 +58,21 @@ Source: "..\..\LICENSE"; DestDir: "{app}"
 Source: "..\..\THIRD_PARTY.md"; DestDir: "{app}"
 
 [Icons]
-Name: "{userprograms}\quiet.md"; Filename: "{app}\quiet_md.exe"; WorkingDir: "{app}"
-Name: "{userdesktop}\quiet.md"; Filename: "{app}\quiet_md.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userprograms}\Quiet.md"; Filename: "{app}\quiet_md.exe"; WorkingDir: "{app}"
+Name: "{userdesktop}\Quiet.md"; Filename: "{app}\quiet_md.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\quiet_md.exe"; Description: "Launch quiet.md"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\quiet_md.exe"; Description: "Launch Quiet.md"; Flags: nowait postinstall skipifsilent
+; The in-app updater installs silently with /UPDATE=1 and expects the app back afterwards.
+Filename: "{app}\quiet_md.exe"; Flags: nowait; Check: IsUpdate
 
 [Code]
+function IsUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:UPDATE|0}') = '1';
+end;
+
 procedure InitializeWizard;
 begin
-  WizardForm.Caption := 'quiet.md';
+  WizardForm.Caption := 'Quiet.md';
 end;

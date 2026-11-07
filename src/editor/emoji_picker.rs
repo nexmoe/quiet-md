@@ -257,7 +257,7 @@ impl Editor {
             let s = &secs[current];
             let next = secs.get(current + 1).map_or(f32::INFINITY, |n| n.top);
             let y = (next - off - TITLE_H).min(0.);
-            title_el(s.title, TITLE_H).absolute().top(px(y)).left_0().bg(theme::rgbaf(255, 255, 255, 0.8))
+            title_el(s.title, TITLE_H).absolute().top(px(y)).left_0().bg(theme::ta(255, 255, 255, 0.8))
         });
         let thumb = (content_h > SCROLL_H).then(|| {
             let h = (SCROLL_H * SCROLL_H / content_h).max(THUMB_MIN);
@@ -285,7 +285,7 @@ impl Editor {
             .w(px(363.))
             .h(px(36.))
             .rounded(px(9.))
-            .bg(Theme::bg_body())
+            .bg(crate::theme::raised(Theme::bg_body()))
             .border_1()
             .border_color(if field_on { Theme::primary() } else { Theme::line_border() })
             .pl(px(39.))
@@ -337,7 +337,7 @@ impl Editor {
             .id("emoji-random")
             .size(px(36.))
             .rounded(px(9.))
-            .bg(Theme::bg_body())
+            .bg(crate::theme::raised(Theme::bg_body()))
             .border_1()
             .border_color(Theme::button_border())
             .shadow(theme::shadow_button())
@@ -394,7 +394,7 @@ impl Editor {
             .h(px(h))
             .flex()
             .flex_col()
-            .bg(Theme::bg_body())
+            .bg(crate::theme::raised(Theme::bg_body()))
             .border_1()
             .border_color(Theme::line_border())
             .rounded(px(MENU_RADIUS))

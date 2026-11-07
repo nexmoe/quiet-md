@@ -128,7 +128,7 @@ fn toolbar_button(id: &'static str, label: &'static str, primary: bool) -> State
     let (bg, hover, active, rim, color) = if primary {
         (Theme::primary(), theme::c(craft::B600), theme::c(craft::B700), Theme::primary(), gpui::white())
     } else {
-        (theme::rgbaf(255, 255, 255, 0.92), theme::rgbaf(255, 255, 255, 1.), theme::c(craft::N100), Theme::button_border(), Theme::text())
+        (theme::ta(255, 255, 255, 0.92), theme::ta(255, 255, 255, 1.), theme::c(craft::N100), Theme::button_border(), Theme::text())
     };
     div()
         .id(id)

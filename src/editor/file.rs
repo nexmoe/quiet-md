@@ -266,7 +266,7 @@ fn make_thumb(p: &Path) -> Option<PathBuf> {
 
 /// Opens the file in Quick Look (scripted runs only log it).
 pub fn quick_look(p: &Path) {
-    if std::env::var_os("FDL_SCRIPT").is_some() {
+    if crate::devtools::scripted() {
         eprintln!("quicklook {}", p.display());
         return;
     }
@@ -571,7 +571,7 @@ impl R<'_> {
                     .rounded(px(RADIUS))
                     .border_1()
                     .border_color(border)
-                    .bg(Theme::bg_body())
+                    .bg(crate::theme::raised(Theme::bg_body()))
                     .shadow(theme::shadow_button())
                     .cursor_pointer()
                     .when(menu_on, |d| d.child(ring().rounded(px(RADIUS + 2.))))

@@ -35,10 +35,16 @@ pub struct Preferences {
     pub remote_images: bool,
     /// The system-wide quick note hotkey is registered.
     pub quick_hotkey: bool,
+    /// Look for a new version now and then (update.rs).
+    pub auto_update: bool,
+    /// Light or dark look: "light", "dark", or empty to follow the system.
+    pub appearance: String,
+    /// The last version that opened this library (changelog.rs).
+    pub seen_version: String,
 }
 
 impl Default for Preferences {
-    fn default() -> Self { Preferences { theme: String::new(), feishu: true, english: true, remote_images: true, quick_hotkey: true } }
+    fn default() -> Self { Preferences { theme: String::new(), feishu: true, english: true, remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new() } }
 }
 
 impl Preferences {
@@ -62,13 +68,44 @@ fn apply(p: Preferences) {
     *PREFS.write().unwrap() = Some(p);
 }
 
+/// Tell the OS which look the app wants (macOS: the window material, menus
+/// and dialogs follow it); empty follows the system.
+pub fn apply_appearance(pref: &str) {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use objc::{class, msg_send, sel, sel_impl};
+        use objc::runtime::Object;
+        let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+        let name = match pref { "light" => Some(c"NSAppearanceNameAqua"), "dark" => Some(c"NSAppearanceNameDarkAqua"), _ => None };
+        let look: *mut Object = match name {
+            Some(n) => { let s: *mut Object = msg_send![class!(NSString), stringWithUTF8String: n.as_ptr()]; msg_send![class!(NSAppearance), appearanceNamed: s] }
+            None => std::ptr::null_mut(),
+        };
+        let _: () = msg_send![app, setAppearance: look];
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = pref;
+}
+
+/// Draw light or dark as the preference and the system say; true when the look changed.
+pub fn sync_dark(cx: &App) -> bool {
+    let on = match prefs().appearance.as_str() {
+        "light" => false,
+        "dark" => true,
+        _ => matches!(cx.window_appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark),
+    };
+    let changed = theme::set_dark(on);
+    if changed { themes::touch(); }
+    changed
+}
+
 /// The current preferences (loaded on first use).
 pub fn prefs() -> Preferences {
     if PREFS.read().unwrap().is_none() { load(); }
     PREFS.read().unwrap().clone().unwrap_or_default()
 }
 
-fn save(p: &Preferences) -> anyhow::Result<()> {
+pub(crate) fn save(p: &Preferences) -> anyhow::Result<()> {
     use std::io::Write;
     let root = crate::store::Store::root_dir();
     std::fs::create_dir_all(&root)?;
@@ -84,7 +121,8 @@ fn save(p: &Preferences) -> anyhow::Result<()> {
 /// Redraw every window's document after the theme or language changed.
 pub(crate) fn refresh_all(this: &mut Workspace, cx: &mut Context<Workspace>) {
     fn refresh(ws: &mut Workspace, cx: &mut Context<Workspace>) {
-        ws.settings_filter.update(cx, |f, cx| f.set_placeholder(tr("搜索快捷键", "Search shortcuts"), cx));
+        ws.settings_filter.update(cx, |f, cx| { f.placeholder_color = Theme::text_disabled(); f.set_placeholder(tr("搜索快捷键", "Search shortcuts"), cx) });
+        ws.search.update(cx, |f, _| f.placeholder_color = Theme::text_disabled());
         if let Some(editor) = &ws.editor {
             editor.update(cx, |e, cx| { e.cache.borrow_mut().clear(); e.refresh_theme(); cx.notify(); });
         }
@@ -110,7 +148,7 @@ pub(crate) fn refresh_all(this: &mut Workspace, cx: &mut Context<Workspace>) {
 /// A theme file in the user's editor; scripted runs only log it (they must
 /// not start other apps).
 fn open_in_editor(p: &std::path::Path, cx: &mut App) {
-    if std::env::var_os("FDL_SCRIPT").is_some() { eprintln!("devtools: open {}", p.display()); return }
+    if crate::devtools::scripted() { eprintln!("devtools: open {}", p.display()); return }
     cx.open_url(&format!("file://{}", p.display()));
 }
 
@@ -167,7 +205,7 @@ pub(crate) fn group(title: Option<&'static str>, rows: Vec<AnyElement>) -> Div {
     let n = rows.len();
     div().w_full().flex().flex_col().gap(px(8.))
         .children(title.map(caption))
-        .child(div().w_full().flex().flex_col().rounded(px(12.)).border_1().border_color(Theme::line_border()).bg(Theme::bg_body()).overflow_hidden()
+        .child(div().w_full().flex().flex_col().rounded(px(12.)).border_1().border_color(Theme::line_border()).bg(crate::theme::raised(Theme::bg_body())).overflow_hidden()
             .children(rows.into_iter().enumerate().map(move |(i, r)| div().w_full().flex().flex_col().when(i + 1 < n, |d| d.border_b_1().border_color(ui::list_line())).child(r))))
 }
 
@@ -201,7 +239,8 @@ fn segmented(id: &'static str, labels: &[&'static str], selected: usize, on: imp
             let on = on.clone();
             div().id((id, i)).h_full().px(px(12.)).flex().items_center().justify_center().rounded(px(7.)).cursor_pointer()
                 .text_size(px(13.)).line_height(px(18.))
-                .when(i == selected, |d| d.bg(Theme::bg_body()).shadow(theme::shadow_button()).text_color(Theme::text()))
+                // In dark mode the picked segment is lighter than the groove (macOS: #636366).
+                .when(i == selected, |d| d.bg(if theme::dark() { theme::rgbaf(0x63, 0x63, 0x66, 1.) } else { Theme::bg_body() }).shadow(theme::shadow_button()).text_color(Theme::text()))
                 .when(i != selected, |d| d.text_color(Theme::text_caption()).hover(|s| s.text_color(Theme::text())))
                 .child(*label)
                 .on_click(cx.listener(move |w, _, _, cx| on(w, i, cx)))
@@ -212,7 +251,7 @@ fn segmented(id: &'static str, labels: &[&'static str], selected: usize, on: imp
 pub(crate) fn keycap(id: impl Into<ElementId>, key: &str, recording: bool) -> Stateful<Div> {
     div().id(id).flex_none().min_w(px(144.)).min_h(px(28.)).px(px(14.)).py(px(4.)).flex().items_center().justify_center().rounded(px(7.)).cursor_pointer()
         .text_size(px(12.)).line_height(px(16.))
-        .when(recording, |d| d.bg(Theme::bg_body()).border_1().border_color(Theme::primary()).text_color(Theme::primary()).child(if key.is_empty() { tr("按下新的组合键…", "Press keys…").to_string() } else { crate::shortcuts::pretty(key) }))
+        .when(recording, |d| d.bg(crate::theme::raised(Theme::bg_body())).border_1().border_color(Theme::primary()).text_color(Theme::primary()).child(if key.is_empty() { tr("按下新的组合键…", "Press keys…").to_string() } else { crate::shortcuts::pretty(key) }))
         .when(!recording, |d| d.bg(Theme::fill_hover()).border_1().border_color(transparent_black()).text_color(Theme::text()).hover(|s| s.bg(Theme::fill_hover_strong())).child(crate::shortcuts::pretty(key)))
 }
 
@@ -225,7 +264,7 @@ pub(crate) fn link_button(id: impl Into<ElementId>, label: &'static str) -> Stat
 
 pub(crate) fn button(id: impl Into<ElementId>, label: &'static str) -> Stateful<Div> {
     div().id(id).flex_none().h(px(28.)).px(px(12.)).flex().items_center().justify_center().rounded(px(8.)).cursor_pointer()
-        .bg(Theme::bg_body()).border_1().border_color(Theme::button_border()).shadow(theme::shadow_button())
+        .bg(crate::theme::raised(Theme::bg_body())).border_1().border_color(Theme::button_border()).shadow(theme::shadow_button())
         .hover(|s| s.bg(theme::c(craft::N100))).active(|s| s.bg(theme::c(craft::N200)))
         .text_size(px(13.)).line_height(px(18.)).text_color(Theme::text()).child(label)
 }
@@ -256,7 +295,7 @@ fn sample_page(t: &themes::Theme, s: f32) -> Div {
     let chip = |s: &'static str| div().px(sc(st.num("code.pad")).max(px(2.))).rounded(sc(st.num("code.radius"))).bg(st.color("code.bg").unwrap_or_else(|| st.token("code_chip")))
         .border_1().border_color(st.color("code.border").unwrap_or_else(|| st.token("code_chip_border"))).font_family(mono.clone()).text_color(st.color("code.color").unwrap_or(text)).child(s);
     let para = p(div().flex().flex_wrap().items_center())
-        .child(tr("quiet.md 是一款", "quiet.md is a "))
+        .child(tr("Quiet.md 是一款", "Quiet.md is a "))
         .child(div().font_weight(FontWeight(st.num("strong.weight"))).text_color(st.color("strong.color").unwrap_or(text)).child(tr("安静的本地笔记应用", "quiet, local notes app")))
         .child(tr("，", ", "))
         .child(tr("文档就是电脑上的文件。", "your notes are files. "))
@@ -281,7 +320,7 @@ fn sample_page(t: &themes::Theme, s: f32) -> Div {
         .child(p(div()).child(label).when(done, |d| d.text_color(st.color("done.color").unwrap_or_else(|| st.token("todo_done"))).when(st.flag("done.strike"), |d| d.line_through())));
     let quote = div().flex().gap(sc((st.num("quote.indent") - st.num("quote.bar")).max(4.)))
         .child(div().flex_none().w(sc(st.num("quote.bar")).max(px(1.))).rounded(px(1.)).bg(st.color("quote.bar-color").unwrap_or_else(|| st.token("quote_bar"))))
-        .child(p(div()).text_color(st.color("quote.color").unwrap_or(text)).when(st.flag("quote.italic"), |d| d.italic()).child(tr("每一篇指南都是用 quiet.md 写成的，放心修改。", "Every guide is written in quiet.md. Edit them freely.")));
+        .child(p(div()).text_color(st.color("quote.color").unwrap_or(text)).when(st.flag("quote.italic"), |d| d.italic()).child(tr("每一篇指南都是用 Quiet.md 写成的，放心修改。", "Every guide is written in Quiet.md. Edit them freely.")));
     let callout = div().px(sc(st.num("callout.pad-x"))).py(sc(st.num("callout.pad-y"))).rounded(sc(st.num("callout.radius")))
         .bg(st.named("callout", "light-yellow").unwrap_or_else(|| st.token("code_chip")))
         .when(st.num("callout.border") > 0., |d| d.border(sc(st.num("callout.border")).max(px(1.))).border_color(st.named("border", "yellow").unwrap_or_else(|| st.token("code_chip_border"))))
@@ -292,7 +331,7 @@ fn sample_page(t: &themes::Theme, s: f32) -> Div {
         .child(cell(a, head).border_r_1().border_color(line_c)).child(cell(b, head));
     let table = div().w_full().rounded(sc(st.num("table.radius"))).border_1().border_color(line_c).overflow_hidden()
         .text_size(sc(st.num("table.size"))).line_height(sc(st.num("table.line-height")))
-        .child(row(tr("按键", "Keys"), tr("作用", "Does"), true, false)).child(row("⌘ N", tr("新建文档", "New document"), false, false)).child(row("⌘ J", tr("搜索所有文档", "Search documents"), false, true));
+        .child(row(tr("按键", "Keys"), tr("作用", "Does"), true, false)).child(row(crate::shortcuts::keys("⌘ N"), tr("新建文档", "New document"), false, false)).child(row(crate::shortcuts::keys("⌘ J"), tr("搜索所有文档", "Search documents"), false, true));
     let (hr_c, hr_w) = (st.color("hr.color").unwrap_or_else(|| st.token("separator_dots")), (st.num("hr.width") * s).max(0.6));
     // Painted to the column's width: a row of fixed-size dots would set the
     // column's minimum width and squeeze its neighbour.
@@ -331,7 +370,7 @@ fn sample_page(t: &themes::Theme, s: f32) -> Div {
             .child(para)
             .child(callout)
             .child(heading(1, tr("五分钟上手", "Five minutes")))
-            .child(div().flex().flex_col().child(task(true, tr("打开这份指南", "Open this guide"))).child(task(false, tr("按 ⌘ N 新建一篇文档", "Press ⌘ N for a new document"))))
+            .child(div().flex().flex_col().child(task(true, tr("打开这份指南", "Open this guide"))).child(task(false, crate::shortcuts::keys(tr("按 ⌘ N 新建一篇文档", "Press ⌘ N for a new document")))))
             .child(heading(2, tr("三种输入方式", "Three ways to write")))
             .child(div().flex().flex_col().child(bullet(tr("斜杠菜单：输入 / 插入任意内容块", "Slash menu: type / to insert any block"))).child(bullet(tr("Markdown：# 加空格变标题", "Markdown: # and a space make a heading"))))
             .child(div().flex().flex_col().child(number("1.", tr("先读「写作基础」", "Read Writing basics first"))).child(number("2.", tr("再看「内容块」", "Then Content blocks"))))
@@ -425,7 +464,8 @@ impl Workspace {
         if p.quick_hotkey != old.quick_hotkey {
             if p.quick_hotkey { crate::quick_note::register(cx); } else { crate::quick_note::suspend_hotkey(); }
         }
-        if p.theme_id() != old.theme_id() || p.english != old.english {
+        if p.appearance != old.appearance { apply_appearance(&p.appearance); }
+        if p.theme_id() != old.theme_id() || p.english != old.english || sync_dark(cx) {
             refresh_all(self, cx);
         }
         cx.notify();
@@ -492,7 +532,8 @@ impl Workspace {
                 .on_click(cx.listener(move |w, _, _, cx| match page { Some(p) => w.open_settings(p, cx), None => w.show_view(View::Trash, cx) }))
         };
         div().w(px(self.sidebar_w(window))).h_full().flex_none().flex().flex_col().text_color(Theme::text()).font_family(theme::UI_FONT)
-            .child(div().h(px(crate::app::HEADER_H)).flex_none().flex().items_center().pl(px(theme::TRAFFIC_LIGHTS_W)).title_bar().child(self.header_navigation(cx)))
+            .child(div().h(px(crate::app::HEADER_H)).flex_none().flex().items_center().pl(px(theme::TRAFFIC_LIGHTS_W)).pr(px(12.)).title_bar().child(self.header_navigation(cx))
+                .child(div().flex_1()).children(update_pill(cx)))
             // The document sidebar's rhythm: 主页 sits 8 under the bar, a section
             // header like 我的文档's, rows on a 31 pitch. 设置's line sits on
             // 主页's, not a section header's: the 34pt box keeps the rows below.
@@ -502,7 +543,6 @@ impl Workspace {
                 .child(div().flex().flex_col().gap(px(sb::ROW_GAP)).children(NAV.iter().map(|p| nav_row(*p, cx)).collect::<Vec<_>>())))
             // Where 设置 was: 返回, back to the page 设置 was opened from.
             .child(div().flex_1())
-            .child(sb::footer_line())
             .child(sb::footer_slot(sb::footer_row("ft-back", "arrow-left", tr("返回", "Back")).tip(tr("返回", "Back"), Some("Esc"))
                 .on_click(cx.listener(|w, _, _, cx| w.close_settings(cx)))))
             .into_any_element()
@@ -540,7 +580,7 @@ impl Workspace {
             Page::Appearance => self.appearance_page(cx),
             Page::Shortcuts => self.shortcut_settings(cx),
             Page::Library => self.library_page(cx),
-            Page::About => self.about_page(),
+            Page::About => self.about_page(cx),
         };
         div().flex_1().min_w_0().h_full().flex().flex_col().bg(Theme::bg_body()).text_color(Theme::text()).font_family(theme::UI_FONT)
             // The bar only drags the window; the page title heads the centred column.
@@ -564,6 +604,8 @@ impl Workspace {
                     segmented("lang", &["简体中文", "English"], p.english as usize, |w, i, cx| w.set_pref(|p| p.english = i == 1, cx), cx)).into_any_element(),
                 row(tr("自动下载网络图片", "Download web images"), desc(tr("关闭后不联网，网络图片显示为占位，点击单独加载。", "When off the app stays offline; web images show a placeholder you can click to load.")),
                     switch("pref-remote", p.remote_images).on_click(cx.listener(|w, _, _, cx| w.set_pref(|p| p.remote_images = !p.remote_images, cx)))).into_any_element(),
+                row(tr("自动检查更新", "Check for updates automatically"), desc(tr("只读取一份版本信息，不发送任何数据；新版本由你决定何时下载安装。", "Reads a version file and sends nothing about you; you decide when to download and install.")),
+                    switch("pref-update", p.auto_update).on_click(cx.listener(|w, _, _, cx| w.set_pref(|p| p.auto_update = !p.auto_update, cx)))).into_any_element(),
             ]))
             .into_any_element()
     }
@@ -603,6 +645,11 @@ impl Workspace {
         div().w_full().flex().flex_col().gap(px(28.))
             .child(div().w_full().flex().flex_col().gap(px(8.))
                 .child(group(None, vec![
+                    row(tr("外观", "Appearance"), None, {
+                        let at = match prefs().appearance.as_str() { "light" => 1, "dark" => 2, _ => 0 };
+                        segmented("appearance", &[tr("跟随系统", "System"), tr("浅色", "Light"), tr("深色", "Dark")], at,
+                            |w, i, cx| w.set_pref(|p| p.appearance = ["", "light", "dark"][i].into(), cx), cx)
+                    }).into_any_element(),
                     row(tr("文档主题", "Document theme"), None, picker).into_any_element(),
                     sample.into_any_element(),
                     row(tr("主题 CSS", "Theme CSS"), Some(where_),
@@ -635,14 +682,68 @@ impl Workspace {
             .into_any_element()
     }
 
-    fn about_page(&self) -> AnyElement {
-        div().w_full().pt(px(24.)).flex().flex_col().items_center().gap(px(10.))
+    fn about_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        div().w_full().flex().flex_col().gap(px(28.)).child(div().w_full().pt(px(24.)).flex().flex_col().items_center().gap(px(10.))
             .child(img(about_icon()).size(px(88.)))
-            .child(div().text_size(px(20.)).line_height(px(26.)).font_weight(FontWeight::SEMIBOLD).child("quiet.md"))
+            .child(div().text_size(px(20.)).line_height(px(26.)).font_weight(FontWeight::SEMIBOLD).child("Quiet.md"))
             .child(div().text_size(px(13.)).line_height(px(18.)).text_color(Theme::text_caption()).child(format!("{} {}", tr("版本", "Version"), env!("CARGO_PKG_VERSION"))))
-            .child(div().text_size(px(13.)).line_height(px(20.)).text_color(Theme::text_caption()).child(tr("本地优先的笔记应用：无需账号，文档就是你电脑上的文件。", "Local-first notes: no account, your documents are files on your Mac.")))
+            .child(div().text_size(px(13.)).line_height(px(20.)).text_color(Theme::text_caption()).child(tr("本地优先的笔记应用：无需账号，文档就是你电脑上的文件。", "Local-first notes: no account, your documents are files on your Mac."))))
+            .child(group(None, vec![update_row(cx).into_any_element()]))
             .into_any_element()
     }
+}
+
+/// The sidebar bar's 更新 pill, only while a new version is on offer:
+/// 更新 downloads it (the pill then fills with its progress), 重启更新
+/// installs it. Labels stay short: the bar keeps 72pt for it at the
+/// narrowest sidebar, and a longer one ellipsizes rather than clips.
+pub(crate) fn update_pill(cx: &mut Context<Workspace>) -> Option<AnyElement> {
+    use crate::update::State;
+    let state = crate::update::state(cx);
+    let (label, tip) = match &state {
+        State::Available(m) => (tr("更新", "Update").to_string(), crate::localized_format!("下载 Quiet.md {}", "Download Quiet.md {}", m.version)),
+        State::Downloading(m) => (format!("{:.0}%", crate::update::progress(m) * 100.), crate::localized_format!("正在下载 {}…", "Downloading {}…", m.version)),
+        State::Ready(m, _) => (tr("重启更新", "Restart").to_string(), crate::localized_format!("重启后更新到 {}，打开的文档会先保存", "Restart into {}; open documents are saved first", m.version)),
+        State::Installing(m) => (tr("即将更新", "Updating").to_string(), crate::localized_format!("Quiet.md 退出后安装 {}", "{} installs when Quiet.md quits", m.version)),
+        _ => return None,
+    };
+    let fill = if let State::Downloading(m) = &state { Some(crate::update::progress(m)) } else { None };
+    let busy = matches!(state, State::Downloading(_) | State::Installing(_));
+    Some(div().id("update-pill").no_drag().flex_shrink().min_w_0().h(px(24.)).px(px(10.)).relative().overflow_hidden().flex().items_center().justify_center().rounded_full()
+        .text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::MEDIUM)
+        .when(!busy, |d| d.cursor_pointer().bg(Theme::primary()).text_color(gpui::white()).hover(|s| s.opacity(0.9)))
+        .when(busy, |d| d.bg(Theme::sidebar_hover()).text_color(Theme::text_caption()))
+        // Downloading: a fixed width (no jitter as the digits change), filled left
+        // to right behind a moving wave.
+        .when_some(fill, |d, f| d.w(px(56.)).child(ui::wave_fill(f, Theme::primary().opacity(0.18))))
+        .child(div().relative().min_w_0().truncate().child(label))
+        .tip(&tip, None)
+        .on_click(move |_, _, cx| match &state { State::Available(_) => crate::update::download(cx), State::Ready(..) => crate::update::install(cx), _ => {} })
+        .into_any_element())
+}
+
+/// 软件更新: where the updater stands and the one next step.
+fn update_row(cx: &mut Context<Workspace>) -> Div {
+    use crate::update::State;
+    let state = crate::update::state(cx);
+    let (title, detail): (SharedString, Option<SharedString>) = match &state {
+        State::Idle => (tr("软件更新", "Software update").into(), None),
+        State::Unsupported => (tr("软件更新", "Software update").into(), desc(tr("这个版本不能自动更新，请从网站下载新版本。", "This copy cannot update itself. Download new versions from the website."))),
+        State::Checking => (tr("正在检查更新…", "Checking for updates…").into(), None),
+        State::Current => (tr("已是最新版本", "Quiet.md is up to date").into(), None),
+        State::Available(m) => (crate::localized_format!("新版本 {} 可用", "Version {} is available", m.version).into(), None),
+        State::Downloading(m) => (crate::localized_format!("正在下载 {}… {:.0}%", "Downloading {}… {:.0}%", m.version, crate::update::progress(m) * 100.).into(), None),
+        State::Ready(m, _) => (crate::localized_format!("{} 已准备好", "{} is ready to install", m.version).into(), desc(tr("重启后完成更新，打开的文档会先保存。", "Quiet.md restarts to finish; open documents are saved first."))),
+        State::Installing(m) => (crate::localized_format!("{} 将在退出后安装", "{} installs when Quiet.md quits", m.version).into(), None),
+        State::Failed(e) => (tr("更新失败", "Update failed").into(), Some(e.clone().into())),
+    };
+    let control = match &state {
+        State::Checking | State::Downloading(_) | State::Installing(_) => None,
+        State::Available(_) => Some(button("update-download", tr("下载更新", "Download")).on_click(|_, _, cx| crate::update::download(cx))),
+        State::Ready(..) => Some(button("update-install", tr("重启以更新", "Restart to Update")).on_click(|_, _, cx| crate::update::install(cx))),
+        _ => Some(button("update-check", tr("检查更新", "Check Now")).on_click(|_, _, cx| crate::update::check(true, cx))),
+    };
+    row(title, detail, div().children(control))
 }
 
 /// The app icon resampled once to 176px, its size at 88pt on a 2x screen.
@@ -860,6 +961,7 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "点击展开" => "Click to expand",
         "点击折叠" => "Click to collapse",
         "批量操作" => "Select documents",
+        "批量管理" => "Manage",
         "无法选中，选择的页面数已到达上限" => "Selection limit reached",
         "在新窗口中打开" => "Open in new window",
         "搜索目标位置" => "Search destinations",
@@ -875,6 +977,8 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "大小" => "Size",
         "当前系统不支持" => "Not supported on this platform",
         "打印超时，请稍后重试" => "Printing timed out. Please try again.",
+        "打印失败，请重试" => "Printing failed. Please try again.",
+        "需要 Microsoft Edge WebView2 运行时" => "Requires the Microsoft Edge WebView2 Runtime",
         "没有找到匹配的结果，尝试其他关键词进行搜索" => "No results. Try another search term.",
         "请先关闭正在编辑这些文档的其他窗口，再删除" => "Close other windows editing these documents before deleting them.",
         "删除成功" => "Deleted successfully",
@@ -901,6 +1005,9 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "恢复成功。部分文档由于原位置不存在，已恢复到“我的文档”" => "Restored. Some documents were moved to My documents because their original location no longer exists.",
         "恢复成功" => "Restored successfully",
         "已彻底删除" => "Permanently deleted",
+        "清空" => "Empty",
+        "已清空回收站" => "Trash emptied",
+        "确认清空回收站？" => "Empty the Trash?",
         "删除的内容将进入回收站，30 天后自动彻底删除" => "Deleted items will be moved to Trash and permanently deleted after 30 days.",
         "确认恢复？" => "Restore this document?",
         "确认后将恢复至原位置" => "The document will be restored to its original location.",
@@ -916,7 +1023,7 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "重试" => "Retry",
         "不再提示" => "Do not ask again",
         "放弃修改" => "Discard changes",
-        "quiet.md · 快速笔记" => "quiet.md · Quick note",
+        "Quiet.md · 快速笔记" => "Quiet.md · Quick note",
         "没有匹配结果，换个关键词试试吧" => "No results. Try another search term.",
         "本文被以下文档所引用" => "Referenced by these documents",
         "隐藏引用列表" => "Hide references",
@@ -1099,8 +1206,8 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "关注文档更新" => "Follow document updates",
         "刚刚" => "just now",
         "文档不存在" => "Document not found",
-        "文档已被另一个实例修改，未覆盖磁盘内容。请先将当前内容导出，再重新打开文档" => "Another instance modified this document. The file was not overwritten. Export your changes, then reopen the document.",
-        "这个文档库由更新版本的 quiet.md 创建，部分内容可能无法正确显示，请升级后再编辑" => "These documents were created by a newer version of quiet.md. Update the app before editing them.",
+        "文档已被另一个实例修改，未覆盖磁盘内容。请另存副本或重新载入磁盘版本" => "Another instance modified this document. The file was not overwritten. Save a copy or reload the version on disk.",
+        "这个文档库由更新版本的 Quiet.md 创建，部分内容可能无法正确显示，请升级后再编辑" => "These documents were created by a newer version of Quiet.md. Update the app before editing them.",
         _ => text,
     }
 }

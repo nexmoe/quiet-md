@@ -1,6 +1,6 @@
 # 第三方组件与素材
 
-quiet.md 本体以 MIT 协议发布（见 [LICENSE](LICENSE)）。下面是随它一起分发的第三方代码和素材。
+Quiet.md 本体以 MIT 协议发布（见 [LICENSE](LICENSE)）。下面是随它一起分发的第三方代码和素材。
 
 ## Rust 依赖
 
@@ -773,7 +773,7 @@ Windows 安装包随附未修改的 Microsoft Visual C++ Runtime `vcruntime140.d
 
 ## 封面与插画
 
-`assets/covers/`（52 张封面）、`assets/illus/`（3 张空态插画）随本项目以 MIT 分发。
+`assets/covers/`（26 张封面及其缩略图）、`assets/illus/`（3 张空态插画，本项目绘制）随本项目以 MIT 分发。
 
 ## 内置主题的样式数值
 

@@ -181,6 +181,10 @@ pub struct Entry {
 
 pub struct Store {
     loaded: std::cell::RefCell<HashMap<String, String>>,
+    /// What `list` parsed from each file, kept while its mtime and size stay
+    /// the same: re-reading every document on each window activation stalled
+    /// the main thread for seconds on big or iCloud-evicted libraries.
+    parsed: HashMap<String, (std::time::SystemTime, u64, Parsed)>,
     root: PathBuf,
     index: HashMap<String, Meta>,
     trash: HashMap<String, Trashed>,
@@ -188,6 +192,10 @@ pub struct Store {
     /// from its backup …), for the window to tell the user once.
     pub warnings: Vec<String>,
 }
+
+/// The parts of an `Entry` that come from the document file.
+#[derive(Clone)]
+struct Parsed { title: String, icon: Option<String>, body: String, reminders: Vec<crate::model::InlineReminder>, links: Vec<crate::model::DocLink> }
 
 /// One write to the indexes: several copies of the app may share a library
 /// (builds tested side by side), so this is a short mutex, not a
@@ -211,12 +219,19 @@ struct FormatMarker {
 /// either the old or the new contents.
 fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
     let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let mut file = std::fs::File::create(&tmp)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    std::fs::rename(&tmp, path)?;
-    Ok(())
+    tmp.push(format!(".{}.tmp", uuid::Uuid::new_v4()));
+    let tmp = PathBuf::from(tmp);
+    let result = (|| -> Result<()> {
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        #[cfg(unix)]
+        if let Some(parent) = path.parent() { std::fs::File::open(parent)?.sync_all()?; }
+        Ok(())
+    })();
+    if result.is_err() { let _ = std::fs::remove_file(&tmp); }
+    result
 }
 
 fn with_suffix(path: &std::path::Path, suffix: &str) -> PathBuf {
@@ -280,6 +295,31 @@ pub fn image_path(src: &str) -> Option<PathBuf> {
     (!src.is_empty() && !src.contains(':') && src.contains('/')).then(|| Store::root_dir().join(p))
 }
 
+/// Export only files belonging to this library, including after symlink resolution.
+pub fn export_path(src: &str) -> Option<PathBuf> {
+    export_path_in(&Store::root_dir(), src)
+}
+
+pub fn export_path_in(root: &std::path::Path, src: &str) -> Option<PathBuf> {
+    let root = root.canonicalize().ok()?;
+    let raw = std::path::Path::new(src.strip_prefix("file://").unwrap_or(src));
+    let path = if raw.is_absolute() { raw.to_path_buf() } else { root.join(raw) }.canonicalize().ok()?;
+    (path.starts_with(root) && path.is_file()).then_some(path)
+}
+
+pub const EXPORT_FILE_LIMIT: u64 = 256 * 1024 * 1024;
+
+/// Bound the actual read as well as metadata: files can grow after inspection.
+pub fn read_bounded(path: &std::path::Path, limit: u64) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    anyhow::ensure!(file.metadata()?.len() <= limit, "文件超过导出大小限制");
+    let mut bytes = Vec::new();
+    file.take(limit + 1).read_to_end(&mut bytes)?;
+    anyhow::ensure!(bytes.len() as u64 <= limit, "文件超过导出大小限制");
+    Ok(bytes)
+}
+
 impl Store {
     /// `QUIET_MD_HOME`, else a folder of
     /// its own in the user's Documents, where they can see and back it up.
@@ -305,13 +345,45 @@ impl Store {
         let mut warnings = vec![];
         let marker = root.join("format.json");
         match std::fs::read(&marker).ok().and_then(|b| serde_json::from_slice::<FormatMarker>(&b).ok()) {
-            Some(m) if m.format > FORMAT => warnings.push("这个文档库由更新版本的 quiet.md 创建，部分内容可能无法正确显示，请升级后再编辑".into()),
+            Some(m) if m.format > FORMAT => warnings.push("这个文档库由更新版本的 Quiet.md 创建，部分内容可能无法正确显示，请升级后再编辑".into()),
             Some(_) => {}
             None => write_atomic(&marker, &serde_json::to_vec_pretty(&FormatMarker { format: FORMAT })?)?,
         }
         let index = load_json(&root.join("index.json"), "文档索引", &mut warnings);
         let trash = load_json(&root.join("trash").join("index.json"), "回收站索引", &mut warnings);
-        Ok(Store { root, index, trash, warnings, loaded: Default::default() })
+        let mut store = Store { root, index, trash, warnings, loaded: Default::default(), parsed: HashMap::new() };
+        if let Ok(entries) = std::fs::read_dir(store.recovery_dir()) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_none_or(|x| x != "xml") { continue; }
+                let restored = (|| -> Result<()> {
+                    let mut doc = docxml::parse(&std::fs::read_to_string(&path)?)?;
+                    doc.title = crate::model::RichText::plain(format!("{} (recovered copy)", doc.title.text));
+                    store.create_from(&doc)?;
+                    std::fs::remove_file(&path)?;
+                    Ok(())
+                })();
+                store.warnings.push(match restored {
+                    Ok(()) => "已恢复上次退出时未保存的文档副本".into(),
+                    Err(e) => format!("恢复副本仍保留在 {}：{e}", path.display()),
+                });
+            }
+        }
+        Ok(store)
+    }
+
+    fn recovery_dir(&self) -> PathBuf {
+        use std::hash::{Hash, Hasher};
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        self.root.hash(&mut hash);
+        dirs::data_local_dir().unwrap_or_else(std::env::temp_dir)
+            .join("quiet-md/recovery").join(format!("{:016x}", hash.finish()))
+    }
+
+    pub fn recover_later(&self, doc: &Document) -> Result<()> {
+        let dir = self.recovery_dir();
+        std::fs::create_dir_all(&dir)?;
+        write_atomic(&dir.join(format!("{}.xml", uuid::Uuid::new_v4())), docxml::serialize(doc).as_bytes())
     }
 
     fn path(&self, id: &str) -> PathBuf {
@@ -320,16 +392,15 @@ impl Store {
 
     /// Take the library's write lock and adopt what other copies wrote since
     /// this one last looked. Every change is written through, so memory holds
-    /// nothing the disk does not; without locks (an odd filesystem) the write
-    /// goes ahead unguarded, as it did before.
-    fn begin_write(&mut self) -> Option<WriteLock> {
-        let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(self.root.join(".lock")).ok()?;
-        f.lock().ok()?;
+    /// nothing the disk does not. A lock failure must never allow an unguarded write.
+    fn begin_write(&mut self) -> Result<WriteLock> {
+        let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(self.root.join(".lock"))?;
+        f.lock()?;
         // An unreadable index is not judged here (that is `open`'s job): the
         // version in memory is written back unchanged.
         if let Some(index) = reread(&self.root.join("index.json")) { self.index = index; }
         if let Some(trash) = reread(&self.root.join("trash").join("index.json")) { self.trash = trash; }
-        Some(WriteLock(f))
+        Ok(WriteLock(f))
     }
 
     fn save_index(&self) -> Result<()> {
@@ -339,7 +410,10 @@ impl Store {
     /// All documents found on disk. A `.xml` file dropped into `docs/` by hand
     /// is picked up too.
     pub fn list(&mut self) -> Vec<Entry> {
-        let _lock = self.begin_write();
+        let _lock = match self.begin_write() {
+            Ok(lock) => Some(lock),
+            Err(e) => { self.warnings.push(format!("无法锁定文档库：{e}")); None }
+        };
         let mut out = vec![];
         let Ok(rd) = std::fs::read_dir(self.root.join("docs")) else { return out };
         let mut dirty = false;
@@ -349,22 +423,34 @@ impl Store {
                 continue;
             }
             let Some(id) = p.file_stem().and_then(|s| s.to_str()).map(str::to_string) else { continue };
-            let Ok(xml) = std::fs::read_to_string(&p) else { continue };
-            let doc = docxml::parse(&xml).unwrap_or_default();
+            let md = e.metadata().ok();
+            let stamp = md.as_ref().and_then(|m| Some((m.modified().ok()?, m.len())));
+            let parsed = match self.parsed.get(&id).filter(|c| stamp == Some((c.0, c.1))) {
+                Some(c) => c.2.clone(),
+                None => {
+                    let Ok(xml) = std::fs::read_to_string(&p) else { continue };
+                    let doc = docxml::parse(&xml).unwrap_or_default();
+                    let parsed = Parsed { title: doc.title.text.clone(), icon: doc.icon.clone(), body: doc.plain_text(), reminders: doc.reminders(), links: doc.doc_links() };
+                    if let Some((t, len)) = stamp { self.parsed.insert(id.clone(), (t, len, parsed.clone())); }
+                    parsed
+                }
+            };
             let meta = self.index.entry(id.clone()).or_insert_with(|| {
                 dirty = true;
-                let m = e
-                    .metadata()
-                    .ok()
+                let m = md
+                    .as_ref()
                     .and_then(|m| m.modified().ok())
                     .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                     .map(|d| d.as_secs())
                     .unwrap_or_else(now);
                 Meta { created: m, modified: m, ..Default::default() }
             });
-            out.push(Entry { id, meta: meta.clone(), title: doc.title.text.clone(), icon: doc.icon.clone(), body: doc.plain_text(), reminders: doc.reminders(), links: doc.doc_links() });
+            let Parsed { title, icon, body, reminders, links } = parsed;
+            out.push(Entry { id, meta: meta.clone(), title, icon, body, reminders, links });
         }
-        if dirty {
+        let seen: std::collections::HashSet<&str> = out.iter().map(|e| e.id.as_str()).collect();
+        self.parsed.retain(|id, _| seen.contains(id.as_str()));
+        if dirty && _lock.is_some() {
             let _ = self.save_index();
         }
         out
@@ -384,7 +470,7 @@ impl Store {
     }
 
     pub fn save(&mut self, id: &str, doc: &Document) -> Result<Meta> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         self.save_now(id, doc)
     }
 
@@ -393,7 +479,7 @@ impl Store {
         let xml = docxml::serialize(doc);
         if let Some(previous) = self.loaded.borrow().get(id) {
             let disk = std::fs::read_to_string(self.path(id))?;
-            anyhow::ensure!(&disk == previous || disk == xml, "文档已被另一个实例修改，未覆盖磁盘内容。请先将当前内容导出，再重新打开文档");
+            anyhow::ensure!(&disk == previous || disk == xml, "文档已被另一个实例修改，未覆盖磁盘内容。请另存副本或重新载入磁盘版本");
         }
         write_atomic(&self.path(id), xml.as_bytes())?;
         self.loaded.borrow_mut().insert(id.to_string(), xml);
@@ -414,7 +500,7 @@ impl Store {
     /// Save `doc` as a new document (创建副本, import).
     pub fn create_from(&mut self, doc: &Document) -> Result<String> {
         let id = uuid::Uuid::new_v4().to_string();
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         self.save_now(&id, doc)?;
         Ok(id)
     }
@@ -433,7 +519,7 @@ impl Store {
     /// Move a document to the 回收站; `root` is the page whose deletion
     /// takes it along (`None`: deleted itself).
     pub fn delete(&mut self, id: &str, root: Option<&str>) -> Result<()> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         let target = self.trash_path(id);
         anyhow::ensure!(!target.try_exists()?, "回收站已存在同名文档，未覆盖：{id}");
         std::fs::create_dir_all(self.root.join("trash"))?;
@@ -478,7 +564,10 @@ impl Store {
     /// ride along). Files trashed by older versions are adopted, and pages
     /// past 30 days are removed for good.
     pub fn list_trash(&mut self) -> Vec<TrashEntry> {
-        let _lock = self.begin_write();
+        let _lock = match self.begin_write() {
+            Ok(lock) => Some(lock),
+            Err(e) => { self.warnings.push(format!("无法锁定文档库：{e}")); None }
+        };
         let dir = self.trash_dir();
         let mut dirty = false;
         let mut on_disk = std::collections::HashSet::new();
@@ -524,14 +613,14 @@ impl Store {
         }
         let cutoff = now().saturating_sub(TRASH_DAYS * 86_400);
         let expired: Vec<String> = self.trash.iter().filter(|(_, t)| t.deleted <= cutoff).map(|(k, _)| k.clone()).collect();
-        for id in expired {
+        for id in expired.into_iter().filter(|_| _lock.is_some()) {
             match std::fs::remove_file(self.trash_path(&id)) {
                 Ok(()) => { self.trash.remove(&id); dirty = true; }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => { self.trash.remove(&id); dirty = true; }
                 Err(e) => self.warnings.push(format!("无法清理过期回收站文档 {id}：{e}")),
             }
         }
-        if dirty && let Err(e) = self.save_trash() {
+        if dirty && _lock.is_some() && let Err(e) = self.save_trash() {
             self.warnings.push(format!("回收站索引保存失败：{e}"));
         }
         let mut out: Vec<TrashEntry> = self
@@ -556,7 +645,7 @@ impl Store {
     /// 恢复: put a deleted page (and the pages that went with it) back. True
     /// when its parent page is gone, so it landed at the top of 我的文档库.
     pub fn restore(&mut self, id: &str) -> Result<bool> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         let group = self.trash_group(id);
         let mut index = self.index.clone();
         let parent = self.trash.get(id).and_then(|t| t.meta.parent.clone());
@@ -589,7 +678,7 @@ impl Store {
 
     /// 彻底删除 a page from the 回收站, with the pages that went with it.
     pub fn purge(&mut self, id: &str) -> Result<()> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         for k in self.trash_group(id) {
             match std::fs::remove_file(self.trash_path(&k)) {
                 Ok(()) => {}
@@ -608,7 +697,7 @@ impl Store {
     }
 
     pub fn set_width(&mut self, id: &str, width: PageWidth) -> Result<()> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         if let Some(m) = self.index.get_mut(id) {
             m.width = width;
         }
@@ -616,7 +705,7 @@ impl Store {
     }
 
     pub fn update_meta(&mut self, id: &str, f: impl FnOnce(&mut Meta)) -> Result<()> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         if let Some(m) = self.index.get_mut(id) {
             f(m);
         }
@@ -624,7 +713,7 @@ impl Store {
     }
 
     pub fn set_catalogue(&mut self, id: &str, pinned: bool) -> Result<()> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         if let Some(m) = self.index.get_mut(id) {
             m.catalogue_closed = !pinned;
         }
@@ -644,7 +733,7 @@ impl Store {
 
     /// 重命名 a document that isn't open: rewrite its title on disk.
     pub fn rename(&mut self, id: &str, title: &str) -> Result<Meta> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         let mut doc = self.load(id)?;
         doc.title = crate::model::RichText::plain(title);
         self.save_now(id, &doc)
@@ -652,7 +741,7 @@ impl Store {
 
     /// Note that `id` was just opened.
     pub fn touch(&mut self, id: &str) -> Option<Meta> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write().ok()?;
         let m = self.index.get_mut(id)?;
         m.opened = now();
         let m = m.clone();
@@ -662,7 +751,7 @@ impl Store {
 
     /// 移动到: hang `id` under `parent` (`None` = top level of 我的文档库), as its last child.
     pub fn set_parent(&mut self, id: &str, parent: Option<&str>) -> Result<Meta> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         let m = self.index.get_mut(id).ok_or_else(|| anyhow::anyhow!("文档不存在"))?;
         m.parent = parent.map(str::to_string);
         m.order = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
@@ -673,7 +762,7 @@ impl Store {
 
     /// 收藏 / 取消收藏; returns the new 收藏时间 (0: not starred).
     pub fn set_starred(&mut self, id: &str, on: bool) -> Result<u64> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         let t = if on { now() } else { 0 };
         if let Some(m) = self.index.get_mut(id) {
             m.starred = t;
@@ -683,7 +772,7 @@ impl Store {
     }
 
     pub fn set_pinned(&mut self, id: &str, pinned: bool) -> Result<()> {
-        let _lock = self.begin_write();
+        let _lock = self.begin_write()?;
         if let Some(m) = self.index.get_mut(id) {
             m.pinned = pinned;
         }
@@ -719,6 +808,65 @@ mod tests {
     }
 
     #[test]
+    fn failed_lock_never_writes() {
+        let lib = Lib::new("lock-failure");
+        let mut s = lib.open();
+        let id = s.create_from(&doc("original")).unwrap();
+        std::fs::remove_file(lib.0.join(".lock")).unwrap();
+        std::fs::create_dir(lib.0.join(".lock")).unwrap();
+        assert!(s.save(&id, &doc("lost")).is_err());
+        assert_eq!(s.load(&id).unwrap().title.text, "original");
+        assert!(s.create_from(&doc("new")).is_err());
+        assert!(s.delete(&id, None).is_err());
+        assert_eq!(s.list().len(), 1);
+    }
+
+    #[test]
+    fn recovery_preserves_both_versions_and_is_consumed_once() {
+        let lib = Lib::new("recovery");
+        let mut s = lib.open();
+        let id = s.create_from(&doc("disk")).unwrap();
+        s.recover_later(&doc("unsaved")).unwrap();
+        let recovery = s.recovery_dir();
+        drop(s);
+        let mut s = lib.open();
+        assert_eq!(s.load(&id).unwrap().title.text, "disk");
+        assert!(s.list().iter().any(|e| e.title == "unsaved (recovered copy)"));
+        assert_eq!(s.list().len(), 2);
+        drop(s);
+        assert_eq!(lib.open().list().len(), 2);
+        std::fs::remove_dir_all(recovery).unwrap();
+    }
+
+    #[test]
+    fn atomic_write_cleans_failed_temporary_files() {
+        let lib = Lib::new("atomic-failure");
+        std::fs::create_dir_all(lib.0.join("target")).unwrap();
+        assert!(write_atomic(&lib.0.join("target"), b"new").is_err());
+        assert_eq!(std::fs::read_dir(&lib.0).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn exports_stay_in_library_and_reads_are_bounded() {
+        let lib = Lib::new("export");
+        let outside = Lib::new("outside");
+        std::fs::create_dir_all(lib.0.join("assets")).unwrap();
+        std::fs::create_dir_all(&outside.0).unwrap();
+        std::fs::write(lib.0.join("assets/good"), b"1234").unwrap();
+        std::fs::write(outside.0.join("secret"), b"secret").unwrap();
+        assert!(export_path_in(&lib.0, "assets/good").is_some());
+        assert!(export_path_in(&lib.0, &outside.0.join("secret").to_string_lossy()).is_none());
+        let traversal = format!("../{}/secret", outside.0.file_name().unwrap().to_string_lossy());
+        assert!(export_path_in(&lib.0, &traversal).is_none());
+        #[cfg(unix)] {
+            std::os::unix::fs::symlink(&outside.0, lib.0.join("assets/link")).unwrap();
+            assert!(export_path_in(&lib.0, "assets/link/secret").is_none());
+        }
+        assert!(read_bounded(&lib.0.join("assets/good"), 3).is_err());
+        assert_eq!(read_bounded(&lib.0.join("assets/good"), 4).unwrap(), b"1234");
+    }
+
+    #[test]
     fn save_list_and_reopen() {
         let lib = Lib::new("basic");
         let mut s = lib.open();
@@ -731,6 +879,30 @@ mod tests {
         assert_eq!(list[0].title, "一");
         assert!(list[0].meta.pinned);
         assert!(lib.0.join("format.json").is_file());
+    }
+
+    #[test]
+    fn list_rereads_only_changed_files() {
+        let lib = Lib::new("listcache");
+        let mut s = lib.open();
+        let a = s.create_from(&doc("一")).unwrap();
+        let b = s.create_from(&doc("二")).unwrap();
+        assert_eq!(s.list().len(), 2);
+        // Another app edits b. a is unchanged on disk, so list keeps what it
+        // parsed before (marked here to tell it from a re-read).
+        std::fs::write(s.path(&b), docxml::serialize(&doc("二改"))).unwrap();
+        let ap = s.path(&a);
+        let stamp = std::fs::metadata(&ap).unwrap().modified().unwrap();
+        s.parsed.get_mut(&a).unwrap().2.title = "缓存".into();
+        assert_eq!(std::fs::metadata(&ap).unwrap().modified().unwrap(), stamp);
+        let titles = |s: &mut Store| { let mut t: Vec<_> = s.list().into_iter().map(|e| e.title).collect(); t.sort(); t };
+        assert_eq!(titles(&mut s), ["二改", "缓存"]);
+        // Saving through the store, or deleting the file, is seen too.
+        s.save(&a, &doc("一改")).unwrap();
+        assert_eq!(titles(&mut s), ["一改", "二改"]);
+        std::fs::remove_file(s.path(&b)).unwrap();
+        assert_eq!(titles(&mut s), ["一改"]);
+        assert_eq!(s.parsed.len(), 1);
     }
 
     #[test]
@@ -804,7 +976,7 @@ mod tests {
         let index = std::fs::read(trash.join("index.json")).unwrap();
         std::fs::rename(&trash, lib.0.join("trash-away")).unwrap();
         std::fs::write(&trash, b"").unwrap();
-        let mut s = Store { root: lib.0.clone(), index: HashMap::new(), trash: serde_json::from_slice(&index).unwrap(), warnings: vec![], loaded: Default::default() };
+        let mut s = Store { root: lib.0.clone(), index: HashMap::new(), trash: serde_json::from_slice(&index).unwrap(), warnings: vec![], loaded: Default::default(), parsed: HashMap::new() };
         assert_eq!(s.list_trash().len(), 1);
         assert_eq!(s.trash.len(), 1);
     }
@@ -843,12 +1015,12 @@ mod tests {
     }
 
     #[test]
-    fn failed_save_leaves_the_old_file() {
+    fn stale_temporary_path_does_not_block_save() {
         let lib = Lib::new("savefail");
         let mut s = lib.open();
         let id = s.create_from(&doc("旧")).unwrap();
         std::fs::create_dir(lib.0.join("docs").join(format!("{id}.xml.tmp"))).unwrap();
-        assert!(s.save(&id, &doc("新")).is_err());
-        assert_eq!(s.load(&id).unwrap().title.text, "旧");
+        s.save(&id, &doc("新")).unwrap();
+        assert_eq!(s.load(&id).unwrap().title.text, "新");
     }
 }

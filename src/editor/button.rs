@@ -500,7 +500,7 @@ impl Editor {
                 .flex()
                 .items_center()
                 .rounded(px(9.))
-                .bg(Theme::bg_body())
+                .bg(crate::theme::raised(Theme::bg_body()))
                 .border_1()
                 .border_color(if err {
                     red
@@ -557,7 +557,7 @@ impl Editor {
             .flex()
             .items_center()
             .rounded(px(9.))
-            .bg(Theme::bg_body())
+            .bg(crate::theme::raised(Theme::bg_body()))
             .border_1()
             .border_color(if p.drop { Theme::primary() } else { Theme::line_border() })
             .when(!p.drop, |d| d.hover(|s| s.border_color(theme::ca(craft::N1000, 0.16))))
@@ -614,7 +614,7 @@ impl Editor {
                         .active(|s| s.bg(c(craft::B700)).border_color(c(craft::B700)))
                 })
                 .when(!primary, |d| {
-                    d.bg(Theme::bg_body()).border_color(Theme::button_border()).shadow(theme::shadow_button()).hover(|s| s.bg(c(craft::N100))).active(|s| s.bg(c(craft::N200)))
+                    d.bg(crate::theme::raised(Theme::bg_body())).border_color(Theme::button_border()).shadow(theme::shadow_button()).hover(|s| s.bg(c(craft::N100))).active(|s| s.bg(c(craft::N200)))
                 })
                 .child(crate::settings::text(t))
         };

@@ -438,7 +438,7 @@ impl Editor {
                         .top(l.top() - o.y)
                         .w(px(INDENT))
                         .h(px(2.))
-                        .bg(Theme::bg_body())
+                        .bg(crate::theme::raised(Theme::bg_body()))
                         .child(div().w(px(INDENT - 2.)).h_full().bg(Theme::primary().opacity(alpha))),
                 );
             }
@@ -490,7 +490,7 @@ impl Editor {
                 .rounded(px(5.))
                 .border_1()
                 .border_color(Theme::line_border())
-                .bg(Theme::bg_body())
+                .bg(crate::theme::raised(Theme::bg_body()))
                 .shadow(theme::shadow_panel())
                 .child(col),
         )

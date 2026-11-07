@@ -162,7 +162,7 @@ fn font_swatch(hex: u32) -> Div {
 
 /// White square crossed by a grey diagonal: "no color".
 fn none_swatch() -> Div {
-    div().flex().items_center().justify_center().bg(Theme::bg_body()).child(icon("swatch-none", 20., Theme::block_placeholder()))
+    div().flex().items_center().justify_center().bg(crate::theme::raised(Theme::bg_body())).child(icon("swatch-none", 20., Theme::block_placeholder()))
 }
 
 fn color_title(t: &'static str) -> Div {
@@ -191,7 +191,7 @@ fn grid_rows<T>(cells: Vec<(menus::SlashKind, T)>) -> Vec<Vec<T>> {
     let mut rows: Vec<Vec<T>> = vec![];
     for (_, c) in cells {
         match rows.last_mut() {
-            Some(r) if r.len() < 6 => r.push(c),
+            Some(r) if r.len() < menus::GRID_COLS => r.push(c),
             _ => rows.push(vec![c]),
         }
     }
@@ -348,7 +348,7 @@ impl Editor {
         }
         match &self.menu {
             Some(Menu::Block { block, .. }) | Some(Menu::Add { block, .. }) => Some(*block),
-            _ => self.hover.filter(|_| !self.hover_clipped),
+            _ => self.hover.filter(|_| !self.hover_clipped && !self.typing),
         }
     }
 
@@ -682,7 +682,7 @@ impl Editor {
             .id("size-picker")
             .occlude()
             .w(px(picker_width(cols)))
-            .bg(Theme::bg_body())
+            .bg(crate::theme::raised(Theme::bg_body()))
             .border_1()
             .border_color(Theme::line_border())
             .rounded(px(6.))
@@ -1168,7 +1168,7 @@ impl Editor {
                     .id("equation-input")
                     .rounded(px(6.))
                     .border_1()
-                    .border_color(if focused { primary } else { theme::rgbaf(0xd0, 0xd3, 0xd6, 1.) })
+                    .border_color(if focused { primary } else { theme::ta(0xd0, 0xd3, 0xd6, 1.) })
                     .hover(move |s| s.border_color(primary))
                     .py(px(8.))
                     .px(px(12.))
@@ -1340,6 +1340,11 @@ impl Editor {
         let turn_above = (pos.y - px(8.)).max(px(0.));
         let turn_up = turn_below < px(338.) && turn_above > turn_below;
         let turn_height = if turn_up { turn_above } else { turn_below }.min(px(338.));
+        let more_height = px(2. + 2. * crate::editor_ui::MENU_PAD_Y + 2. * crate::editor_ui::MENU_ROW_H);
+        let more_above = (pos.y - px(10.)).max(px(0.));
+        let more_below = (window.viewport_size().height - pos.y - px(52.)).max(px(0.));
+        // Down unless it doesn't fit there, like the other dropdowns.
+        let more_up = more_below < more_height && more_above > more_below;
         let drop = |m: Menu, x: f32| {
             div()
                 .id("tb-drop")
@@ -1362,8 +1367,6 @@ impl Editor {
         let x_turn = 8.;
         let x_align = x_turn + 44. + 8. + 1. + 8.;
         let x_color = x_align + 44. + 8. + 1. + 8. + 6. * (24. + 8.);
-        // The menu sits 9px left of its button.
-        let x_more = x_color + 44. + 12. + 1. + 12. - 9.;
         let bar = div()
             .h(px(40.))
             .px(px(8.))
@@ -1472,7 +1475,7 @@ impl Editor {
                 Some(drop(Menu::Align, x_align).child(list).into_any_element())
             }
             Some(Menu::Color) => Some(drop(Menu::Color, x_color).child(self.color_panel(None, cx)).into_any_element()),
-            Some(Menu::TbMore) => Some(div().absolute().top(px(44.)).left(px(x_more)).child(self.tb_more_menu(cx)).into_any_element()),
+            Some(Menu::TbMore) => Some(div().absolute().when(more_up, |d| d.bottom(px(44.))).when(!more_up, |d| d.top(px(44.))).right_0().child(self.tb_more_menu(cx)).into_any_element()),
             _ => None,
         };
         let el = popover()
@@ -1503,7 +1506,7 @@ fn switch(on: bool) -> Div {
         .flex()
         .when(on, |d| d.justify_end())
         .bg(if on { Theme::primary_500() } else { Theme::block_placeholder() })
-        .child(div().size(px(12.)).rounded_full().bg(Theme::bg_body()))
+        .child(div().size(px(12.)).rounded_full().bg(crate::theme::raised(Theme::bg_body())))
 }
 
 impl Editor {
@@ -1512,7 +1515,7 @@ impl Editor {
     /// hover. Each half darkens over the button's own hover fill.
     fn color_split(&self, id: &'static str, open: bool, cx: &Context<Self>) -> Stateful<Div> {
         let (lt, lb) = self.last_color.clone();
-        let fill = || rgba(0x1f23290d);
+        let fill = || crate::theme::adapt(rgba(0x1f23290d).into());
         div()
             .id(id)
             .h(px(24.))
@@ -1538,7 +1541,10 @@ impl Editor {
                             .items_center()
                             .justify_center()
                             .text_size(px(16.))
-                            .text_color(lt.as_ref().and_then(|c| theme::text_color(&c.0)).unwrap_or(Theme::text()))
+                            .text_color({
+                                let c = lt.as_ref().and_then(|c| theme::text_color(&c.0)).unwrap_or(Theme::text());
+                                if lb.is_some() { crate::theme::on_mark(c) } else { c }
+                            })
                             .child("A"),
                     )
                     .on_mouse_down(

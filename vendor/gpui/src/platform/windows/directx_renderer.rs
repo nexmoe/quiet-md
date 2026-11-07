@@ -1529,7 +1529,8 @@ pub(crate) mod shader_resources {
             );
 
             let ret = D3DCompileFromFile(
-                &HSTRING::from(shader_path.to_str().unwrap()),
+                // quiet.md: wide path, a checkout under a non-ASCII folder works too.
+                &HSTRING::from(shader_path.as_os_str()),
                 None,
                 include_handler,
                 entry_point,

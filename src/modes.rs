@@ -2,7 +2,7 @@
 //! "?" help button at the bottom right of the page that opens it.
 
 use crate::app::Workspace;
-use crate::theme::{self, Theme, craft};
+use crate::theme::{self, Theme};
 use crate::trash::menu_label;
 use crate::ui::{ToastKind, icon, menu_glyph, menu_row, popover};
 use gpui::{prelude::FluentBuilder, *};
@@ -63,7 +63,7 @@ fn rows(list: &[Row]) -> Vec<AnyElement> {
                 .border_color(Theme::line_divider())
                 .child(div().flex_none().mr(px(8.)).child(icon(ic, 16., Theme::text_caption())))
                 .child(div().flex_none().mr(px(16.)).text_size(px(13.)).line_height(px(18.)).child(crate::settings::text(desc)))
-                .child(div().flex_1().min_w_0().flex().justify_end().text_size(px(12.)).line_height(px(18.)).text_color(Theme::text_caption()).child(crate::settings::text(keys)))
+                .child(div().flex_1().min_w_0().flex().justify_end().text_size(px(12.)).line_height(px(18.)).text_color(Theme::text_caption()).child(crate::shortcuts::keys(crate::settings::text(keys))))
                 .into_any_element(),
         })
         .collect()
@@ -129,7 +129,7 @@ impl Workspace {
                         .flex()
                         .flex_col()
                         .child(menu_label(title, g.clone(), gpui::white()).text_size(px(13.)).line_height(px(18.)))
-                        .child(menu_label(desc, g.clone(), theme::ca(craft::N00, 0.85)).text_size(px(11.)).line_height(px(15.)).text_color(Theme::text_caption())),
+                        .child(menu_label(desc, g.clone(), theme::rgbaf(255, 255, 255, 0.85)).text_size(px(11.)).line_height(px(15.)).text_color(Theme::text_caption())),
                 )
                 .when(selected, |d| d.child(menu_glyph("check", 14., g)))
                 .on_click(cx.listener(move |w, _, window, cx| w.set_mode(to_reading, window, cx)))
@@ -169,7 +169,7 @@ impl Workspace {
                 .flex_col()
                 .border_l_1()
                 .border_color(Theme::line_divider())
-                .bg(Theme::bg_body())
+                .bg(crate::theme::raised(Theme::bg_body()))
                 .child(
                     div()
                         .flex_none()

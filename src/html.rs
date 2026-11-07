@@ -77,7 +77,10 @@ a { color: #0f5492; text-decoration: underline; text-underline-offset: 2px; }
 .bgb { border-radius: 3px; margin: 0 -7px; padding: 9px 7px; }
 "#;
 
-pub fn to_html(doc: &Document, opts: &Options) -> String {
+/// The document as a standalone page, always in the light colours (it is printed or opened elsewhere).
+pub fn to_html(doc: &Document, opts: &Options) -> String { crate::theme::light(|| page(doc, opts)) }
+
+fn page(doc: &Document, opts: &Options) -> String {
     let title = crate::settings::display_title(&doc.title.text);
     let mut out = String::new();
     let _ = write!(out, "<!DOCTYPE html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>{}</title><style>{CSS}</style></head><body>", esc(&title));
@@ -200,7 +203,7 @@ impl Writer<'_> {
                 match data_uri(src) {
                     Some(uri) => out.push_str(&image(&uri, *width, *height, *crop)),
                     None => {
-                        let _ = write!(out, "<div class=\"raw\">{}</div>", esc(src));
+                        let _ = write!(out, "<div class=\"raw\">{}</div>", esc(crate::settings::tr("图片不可用", "Image unavailable")));
                     }
                 }
                 if let Some(c) = caption.as_ref().filter(|c| !c.is_empty()) {
@@ -222,14 +225,7 @@ impl Writer<'_> {
             }
             BlockKind::Column { .. } => self.blocks(&b.children, depth, out),
             BlockKind::File(f) => {
-                let path = (f.src_kind == "path").then(|| crate::store::image_path(&f.src)).flatten();
-                let _ = write!(out, "<div class=\"b\"{align}>");
-                match path {
-                    Some(p) => {
-                        let _ = write!(out, "<a href=\"file://{}\">{}</a>", esc(&p.to_string_lossy()), esc(&f.name));
-                    }
-                    None => out.push_str(&esc(&f.name)),
-                }
+                let _ = write!(out, "<div class=\"b\"{align}>{}", esc(&f.name));
                 out.push_str("</div>");
             }
             BlockKind::Countdown(c) => {
@@ -253,11 +249,11 @@ impl Writer<'_> {
                 out.push_str("</div>");
             }
             BlockKind::Raw { xml, .. } => match crate::docxml::raw_summary(xml) {
-                (text, Some(link)) => {
+                (text, Some(link)) if crate::paste::link_ok(&link) => {
                     let label = if text.is_empty() { &link } else { &text };
                     let _ = write!(out, "<div class=\"raw\"><a href=\"{}\">{}</a></div>", esc(&link), esc(label));
                 }
-                (text, None) if !text.is_empty() => {
+                (text, _) if !text.is_empty() => {
                     let _ = write!(out, "<div class=\"raw\">{}</div>", esc(&text).replace('\n', "<br>"));
                 }
                 _ => {}
@@ -338,11 +334,14 @@ fn image(uri: &str, width: Option<f32>, height: Option<f32>, crop: Option<[f32; 
 fn data_uri(src: &str) -> Option<String> {
     use base64::Engine;
     if src.starts_with("data:") {
-        return Some(src.to_string());
+        let encoded = ["data:image/png;base64,", "data:image/jpeg;base64,", "data:image/gif;base64,", "data:image/webp;base64,"]
+            .iter().find_map(|prefix| src.strip_prefix(prefix))?;
+        return (encoded.len() <= 28 * 1024 * 1024 && base64::engine::general_purpose::STANDARD.decode(encoded).is_ok())
+            .then(|| src.to_string());
     }
     let remote = src.starts_with("http://") || src.starts_with("https://");
-    let path = if remote { crate::editor::image::cached_remote(src) } else { crate::store::image_path(src) };
-    let Some(bytes) = path.and_then(|p| std::fs::read(p).ok()) else {
+    let path = if remote { crate::editor::image::cached_remote(src) } else { crate::store::export_path(src) };
+    let Some(bytes) = path.and_then(|p| crate::store::read_bounded(&p, 20 * 1024 * 1024).ok()) else {
         return remote.then(|| src.replace('"', "%22"));
     };
     let mime = match image::guess_format(&bytes) {
@@ -392,7 +391,7 @@ fn inline(t: &RichText) -> String {
                 Some(src) => s.chars().map(|_| math(src)).collect(),
                 None => {
                     let (text, link) = crate::docxml::raw_summary(&obj.xml);
-                    let x = match link.filter(|_| matches!(obj.kind, InlineKind::Button(_))) {
+                    let x = match link.filter(|l| matches!(obj.kind, InlineKind::Button(_)) && crate::paste::link_ok(l)) {
                         Some(l) => format!("<a href=\"{}\">{}</a>", esc(&l), esc(&text)),
                         None => esc(&text),
                     };
@@ -429,7 +428,7 @@ fn inline(t: &RichText) -> String {
         if m.bold {
             x = format!("<b>{x}</b>");
         }
-        if let Some(url) = &m.link {
+        if let Some(url) = m.link.as_ref().filter(|url| crate::paste::link_ok(url)) {
             x = format!("<a href=\"{}\">{x}</a>", esc(url));
         }
         out.push_str(&x);
@@ -444,12 +443,24 @@ fn css(c: Hsla) -> String {
 }
 
 fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;").replace('`', "&#96;")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exports_reject_active_data_and_unsafe_links() {
+        assert!(data_uri("data:text/html;base64,PHNjcmlwdD4=").is_none());
+        assert!(data_uri("data:image/svg+xml;base64,PHN2Zz4=").is_none());
+        assert!(data_uri("data:image/png;base64,\" onerror=\"alert(1)").is_none());
+        assert!(data_uri("data:image/png;base64,aGVsbG8=").is_some());
+        let mut text = RichText::default();
+        text.push("click", Marks { link: Some("javascript:alert(1)".into()), ..Default::default() });
+        assert_eq!(inline(&text), "click");
+        assert_eq!(esc("'`\"<>"), "&#39;&#96;&quot;&lt;&gt;");
+    }
 
     #[test]
     fn renders_blocks_and_marks() {

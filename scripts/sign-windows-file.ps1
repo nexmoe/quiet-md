@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 try {
     if (!$VerifyOnly) {
-        & $SignTool sign /sha1 $CertificateThumbprint /s My /fd SHA256 /tr $TimestampUrl /td SHA256 /d quiet.md $FilePath
+        & $SignTool sign /sha1 $CertificateThumbprint /s My /fd SHA256 /tr $TimestampUrl /td SHA256 /d Quiet.md $FilePath
         if ($LASTEXITCODE -ne 0) { throw "Signing failed: $FilePath" }
     }
     & $SignTool verify /pa /all /tw $FilePath

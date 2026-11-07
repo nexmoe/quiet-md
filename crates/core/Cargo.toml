@@ -2,9 +2,9 @@
 # disk, import and export. No GPUI, so it builds and tests on its own.
 [package]
 name = "fdl_core"
-version = "0.1.3"
+version = "0.1.7"
 edition = "2024"
-description = "The document engine behind quiet.md: model, DocxXML, editing core, library"
+description = "The document engine behind Quiet.md: model, DocxXML, editing core, library"
 license = "MIT"
 readme = "../../README.md"
 authors = ["s1dashu"]

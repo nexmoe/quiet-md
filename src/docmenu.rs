@@ -287,7 +287,7 @@ impl Workspace {
                                     .flex()
                                     .when(refs_shown, |d| d.justify_end())
                                     .bg(if refs_shown { Theme::primary_500() } else { Theme::block_placeholder() })
-                                    .child(div().size(px(12.)).rounded_full().bg(Theme::bg_body())),
+                                    .child(div().size(px(12.)).rounded_full().bg(crate::theme::raised(Theme::bg_body()))),
                             )
                             .on_click(cx.listener(move |w, _, _, cx| {
                                 w.close_doc_menu(cx);
@@ -324,7 +324,7 @@ impl Workspace {
                 .rounded(px(9.))
                 .border_1()
                 .border_color(if on { Theme::primary() } else { Theme::line_border() })
-                .bg(Theme::bg_body())
+                .bg(crate::theme::raised(Theme::bg_body()))
                 .cursor_pointer()
                 .when(!on, |d| d.hover(|s| s.border_color(Theme::primary())))
                 .child(

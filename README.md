@@ -1,114 +1,134 @@
-<h1 align="center">quiet.md</h1>
+<h1 align="center">Quiet.md</h1>
 
 <p align="center">
-  <b>一个又快又安静的本地笔记应用。</b><br>
-  Rust + GPUI 原生绘制，笔记全部存在你的电脑上，兼容飞书文档的 DocxXML 格式。
+  <b>A fast, quiet, local notes app.</b><br>
+  Drawn natively with Rust + GPUI. Your notes stay on your computer, stored in the Feishu (Lark) DocxXML format.
 </p>
 
 <p align="center">
-  <a href="https://github.com/s1dashu/quiet-md/releases/latest"><img src="https://img.shields.io/github/v/release/s1dashu/quiet-md?label=release&color=2f6feb" alt="最新版本"></a>
-  <a href="https://github.com/s1dashu/quiet-md/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/s1dashu/quiet-md/ci.yml?branch=main&label=CI" alt="CI 状态"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="支持 macOS 和 Windows">
-  <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20GPUI-dea584?logo=rust" alt="使用 Rust 和 GPUI 构建">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/s1dashu/quiet-md?color=green" alt="MIT 许可"></a>
+  English · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/s1dashu/quiet-md/releases/latest"><img src="https://img.shields.io/github/v/release/s1dashu/quiet-md?label=release&color=2f6feb" alt="Latest release"></a>
+  <a href="https://github.com/s1dashu/quiet-md/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/s1dashu/quiet-md/ci.yml?branch=main&label=CI" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="macOS and Windows">
+  <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20GPUI-dea584?logo=rust" alt="Built with Rust and GPUI">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/s1dashu/quiet-md?color=green" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/status-beta-orange" alt="Beta">
 </p>
 
 <p align="center">
-  <a href="https://download.quiet.md/latest/quiet-md-macos-arm64.zip"><img src="docs/images/download-macos.svg" height="56" alt="下载 macOS 版"></a>
+  <a href="https://download.quiet.md/latest/quiet-md-macos-arm64.zip"><img src="docs/images/download-macos.svg" height="56" alt="Download for macOS"></a>
   &nbsp;
-  <a href="https://download.quiet.md/latest/quiet-md-windows-x64-setup.exe"><img src="docs/images/download-windows.svg" height="56" alt="下载 Windows 版"></a>
+  <a href="https://download.quiet.md/latest/quiet-md-windows-x64-setup.exe"><img src="docs/images/download-windows.svg" height="56" alt="Download for Windows"></a>
 </p>
 
 <p align="center">
-  <a href="https://quiet.md"><b>官网</b></a> ·
-  <a href="#下载"><b>下载</b></a> ·
-  <a href="#性能">性能</a> ·
-  <a href="#功能">功能</a> ·
-  <a href="CONTRIBUTING.md">参与开发</a>
+  <a href="https://quiet.md/?lang=en"><b>Website</b></a> ·
+  <a href="#download"><b>Download</b></a> ·
+  <a href="#performance">Performance</a> ·
+  <a href="#features">Features</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 <p align="center">
-  <img src="docs/images/home.png" width="100%" alt="quiet.md 的主页：左侧是文档树，右侧按网格排列所有笔记。">
+  <img src="docs/images/home.png" width="100%" alt="The Quiet.md home screen: a document tree on the left and all notes in a grid on the right.">
 </p>
 
 > [!NOTE]
-> quiet.md 目前是 **Beta 版本**，还在快速迭代。遇到 bug 或有想法，欢迎[提 issue](https://github.com/s1dashu/quiet-md/issues)，更欢迎直接提 PR，一起把它打磨好。
+> Quiet.md is in **beta** and changing quickly. If you hit a bug or have an idea, please [open an issue](https://github.com/s1dashu/quiet-md/issues) — or better, send a pull request.
 
-## 为什么是 quiet.md
+Linux support is experimental and currently built from source; see the [Linux instructions and validation limits](CONTRIBUTING.md#linux-experimental).
 
-**⚡ 快，原生的那种快。** 整个界面由 Rust 和 [GPUI](https://www.gpui.rs/) 直接用 GPU 绘制，没有 WebView、没有 Electron。百万字文档实测中，输入、删除和滚动的帧处理 P95 均低于 6 ms。
+## Why Quiet.md
 
-**🔒 本地优先，文件归你。** 没有账号，没有云端，默认不联网。文档库就是电脑上的一个普通文件夹，每篇笔记是一个 XML 文件。用 Git、iCloud、坚果云或任何同步工具管理都可以，哪天不用了，文件也还在。
+**⚡ Fast, the native kind of fast.** The whole interface is drawn on the GPU by Rust and [GPUI](https://www.gpui.rs/). No WebView, no Electron. In a one-million-character document, typing, deleting and scrolling all stay under 6 ms per frame at P95.
 
-**📝 兼容飞书 DocxXML，完整的富文本编辑器。** 笔记直接以飞书文档的 DocxXML 格式保存，从飞书复制粘贴、导入导出都能保留结构。标题、待办、表格、分栏、高亮块、代码、公式、图片和附件，写文档常用的块都有。
+**🔒 Local-first. Your files are yours.** No account, no cloud, and nothing goes over the network by default (the optional update check aside). Your library is an ordinary folder on your computer, and each note is one XML file. Manage it with Git, iCloud or any sync tool you like; if you ever stop using Quiet.md, your files are still there.
 
-## 下载
+**📝 A full rich-text editor that speaks Feishu (Lark) DocxXML.** Notes are saved in the DocxXML format used by Feishu (Lark) Docs, so copy-paste, import and export keep their structure. Headings, to-dos, tables, columns, callouts, code, math, images and attachments — the blocks you reach for when writing documents are all there.
+
+## Download
 
 <p align="center">
-  <a href="https://download.quiet.md/latest/quiet-md-macos-arm64.zip"><img src="docs/images/download-macos.svg" height="56" alt="下载 macOS 版"></a>
+  <a href="https://download.quiet.md/latest/quiet-md-macos-arm64.zip"><img src="docs/images/download-macos.svg" height="56" alt="Download for macOS"></a>
   &nbsp;
-  <a href="https://download.quiet.md/latest/quiet-md-windows-x64-setup.exe"><img src="docs/images/download-windows.svg" height="56" alt="下载 Windows 版"></a>
+  <a href="https://download.quiet.md/latest/quiet-md-windows-x64-setup.exe"><img src="docs/images/download-windows.svg" height="56" alt="Download for Windows"></a>
 </p>
 
-| 平台 | 系统要求 |
+| Platform | Requirements |
 |---|---|
-| **macOS**（Apple Silicon） | macOS 13 及以上 |
-| **Windows**（x64） | Windows 10 2004 及以上 |
+| **macOS** (Apple Silicon) | macOS 13 or later |
+| **Windows** (x64) | Windows 10 version 2004 or later |
 
-- **macOS**：解压后把 `quiet.md.app` 拖进「应用程序」。安装包已签名并通过 Apple 公证。
-- **Windows**：运行安装程序，默认只装到当前用户目录，卸载不会删除笔记。如果首次运行出现 SmartScreen 提示，点「更多信息 → 仍要运行」即可。
+- **macOS**: unzip and drag `quiet.md.app` into Applications. The app is signed and notarized by Apple.
+- **Windows**: run the installer. By default it installs for the current user only, and uninstalling never deletes your notes. If SmartScreen appears on first launch, click **More info → Run anyway**.
 
-也可以在官网 [quiet.md](https://quiet.md) 下载。所有版本和 SHA-256 校验值见 [GitHub Releases](https://github.com/s1dashu/quiet-md/releases)。Intel Mac 暂无安装包，可以[从源码构建](CONTRIBUTING.md#从源码构建)。
+You can also download from [Quiet.md](https://quiet.md/?lang=en). Every release and its SHA-256 checksums are on [GitHub Releases](https://github.com/s1dashu/quiet-md/releases). There is no Intel Mac build yet; you can [build from source](CONTRIBUTING.md#building-from-source).
 
-首次启动会在空文档库里放一套「开始指南」，十分钟带你过一遍主要功能；已有的笔记不会被覆盖。
+On first launch, Quiet.md puts a **Getting started** guide into an empty library — a ten-minute tour of the main features. Existing notes are never overwritten.
 
-## 性能
+The interface is available in English and Simplified Chinese.
 
-在一篇 **100 万字**、549 章的混合文档里连续操作 100 次，统计每帧处理耗时：
+## Performance
 
-| 操作 | P50 | P95 |
+Frame processing time over 100 consecutive operations in a mixed document of **1 million characters** and 549 chapters:
+
+| Operation | P50 | P95 |
 |---|---:|---:|
-| ⌨️ 连续输入 | **5.06 ms** | 5.78 ms |
-| ⌫ 连续退格 | **4.99 ms** | 5.55 ms |
-| 🖱️ 连续滚动 | **2.08 ms** | 4.14 ms |
+| ⌨️ Typing | **5.06 ms** | 5.78 ms |
+| ⌫ Backspace | **4.99 ms** | 5.55 ms |
+| 🖱️ Scrolling | **2.08 ms** | 4.14 ms |
 
-120 Hz 屏幕每帧的预算是 8.3 ms，百万字文档下的 P95 也留有余量。
+A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character document, there is headroom left.
 
 | | |
 |---|---|
-| macOS 安装包 | 约 18 MB |
-| Windows 安装包 | 约 14 MB |
-| 运行时 | 无 WebView、无 Electron、无后台服务 |
+| macOS download | ~18 MB |
+| Windows installer | ~14 MB |
+| Runtime | No WebView, no Electron, no background services |
 
-<sub>Apple M5 Pro / 48 GiB，macOS 26.5，Release 构建。测试方法和复现脚本见 [docs/PERFORMANCE.md](docs/PERFORMANCE.md)。</sub>
+<sub>Apple M5 Pro / 48 GiB, macOS 26.5, release build. Methodology and scripts to reproduce: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).</sub>
 
-## 功能
+## Features
 
-- **编辑**：标题、有序 / 无序列表、待办、引用、代码块（语法高亮）、LaTeX 公式、表格（可合并单元格）、高亮块、分栏、图片、附件、封面。支持 `#`、`-`、`[]`、`>` 等 Markdown 快捷输入和 `/` 斜杠菜单。
-- **整理**：文档树、置顶、收藏、全文搜索、回收站。
-- **导入导出**：导入 Markdown 和飞书 DocxXML；导出 Markdown、PDF，也可以直接打印。从飞书或网页粘贴时保留结构。
-- **本地文件**：通过「文件 → 打开文件…」（macOS `⌘O` / Windows `Ctrl+O`）或 `quiet_md /path/to/note.md` 打开本地 `.md` / `.mdx`，用现有编辑器预览和编辑，按 `⌘S` / `Ctrl+S` 保存回原文件。保存使用现有 Markdown 导出规则；MDX 按 Markdown 处理，不执行 JSX 组件。
-- **快捷键**：按 `⌘ /` 查看全部快捷键，每一个都能改。
-- **主题**：内置 Craft、飞书、Notion、Obsidian 四套风格，也可以用 CSS 自己写，见 [docs/THEMES.md](docs/THEMES.md)。
+- **Editing**: headings, ordered and bulleted lists, to-dos, quotes, code blocks with syntax highlighting, LaTeX math, tables (with merged cells), callouts, columns, images, attachments and covers. Markdown shortcuts such as `#`, `-`, `[]` and `>`, plus a `/` slash menu.
+- **Organizing**: a document tree, pinning, favorites, full-text search and a trash.
+- **Import and export**: import Markdown and Feishu (Lark) DocxXML; export Markdown and PDF, or print directly. Pasting from Feishu or a web page keeps the structure.
+- **Local files**: open `.md` / `.mdx` through **File → Open File…** (`⌘O` / `Ctrl+O`) or `quiet_md /path/to/note.md`, edit with the existing editor, and save back with `⌘S` / `Ctrl+S`. Saving follows the Markdown export rules; MDX is treated as Markdown and JSX components are not executed.
+- **Shortcuts**: press `⌘ /` (`Ctrl+/` on Windows) to see them all. Every one can be rebound. On Windows, Ctrl stands in for ⌘ and Alt for ⌥; the app and the Getting started guides show the keys for your system.
+- **Themes**: four built-in styles — Craft, Feishu, Notion and Obsidian — each with a dark variant, or write your own in CSS; see [docs/THEMES.md](docs/THEMES.md).
 
-## 你的文件在哪
+## Contributors
 
-默认在 `~/Documents/Quiet.md`（Windows 是「文档」下的 `Quiet.md`）。每篇笔记是 `docs/` 里的一份 XML，图片和附件在 `assets/`。保存是原子的：先写临时文件再改名，崩溃也不会留下写了一半的笔记。
+Thanks to everyone who has helped build Quiet.md. Issues and pull requests are welcome: building, testing and code conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-目录结构和格式细节见 [docs/FORMAT.md](docs/FORMAT.md)。
+[![Contributors](https://raw.githubusercontent.com/s1dashu/quiet-md/contributors-assets/docs/images/contributors.svg?v=1)](https://github.com/s1dashu/quiet-md/graphs/contributors)
 
-## 参与开发
+## Recent updates
 
-quiet.md 还在 Beta，有很多可以一起做的事：修 bug、补功能、适配更多平台。欢迎提 issue 和 PR。
+- **0.1.7** (Nov 6): safer multi-window saving, conflict recovery and disk writes; restricted export file access; Markdown exports keep inline attachments. Fixed Chinese input deletion with Weasel on Windows.
+- **0.1.6** (Nov 6): smoother window switching and typing, wider tables, regular saves during continuous typing, and Option+Space for global quick notes on macOS. Windows adds image paste, PDF export and printing, with corrected word deletion.
+- **0.1.5** (Nov 5): the app is now called Quiet.md; your library and notes stay where they were.
+  - Manage several documents at once from Home: duplicate, move or delete them together.
+  - Empty the Trash in one step; arrow keys move through the insert menu's icons; deleting every document no longer creates an empty one.
+  - After an in-app update, the sidebar shows once what changed in the new version.
+  - Windows: shortcuts and the built-in guide read Ctrl / Alt, and a failed launch explains itself and leaves a log.
+- **0.1.4** (Nov 5):
+  - In-app updates: when a new version is out, an **Update** button appears at the top of the sidebar. The download is verified against its signature, and a restart finishes the install; open documents are saved first. Automatic checks can be turned off in **Settings › General**. A check only fetches a version manifest and sends no data. Version 0.1.3 and earlier need a one-time manual download of 0.1.4.
+  - Dark mode: choose System, Light or Dark in **Settings › Appearance**. Built-in and custom themes all have a dark look; export and printing stay light.
+- **0.1.3** (Nov 4): sidebar text is readable again when macOS is in dark mode.
+- **0.1.2** (Nov 4): the standard macOS menus and shortcuts (Hide, Minimize, Zoom, Full Screen); clicking the Dock icon reopens a window after the last one was closed. Fixed some Chinese characters rendering with the wrong glyphs.
+- **0.1.1** (Nov 3): first Windows x64 release, installed per user, keeping your notes on uninstall. Polished the Chinese and English interface and the built-in guide.
 
-从源码构建、测试和打包见 [CONTRIBUTING.md](CONTRIBUTING.md)，代码结构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+Full notes for each version are on [Releases](https://github.com/s1dashu/quiet-md/releases).
 
-## 许可
+## License
 
-代码使用 [MIT](LICENSE) 许可。第三方代码、字体和素材见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+The code is licensed under [MIT](LICENSE). Third-party code, fonts and assets are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
 
-以下内容不在 MIT 范围内，fork 时请替换：
+The following are not covered by the MIT license and should be replaced in forks:
 
-- `assets/icons/` 里的 67 个 Nucleo 图标使用 Nucleo 商业授权，请勿单独提取再分发；
-- 「quiet.md」这个名字和应用图标。
+- The 67 Nucleo icons in `assets/icons/` are under a commercial Nucleo license. Do not extract or redistribute them on their own.
+- The name "Quiet.md" and the app icon.

@@ -370,6 +370,12 @@ impl WindowsWindowInner {
     // It's a known bug that you can't trigger `ctrl-shift-0`. See:
     // https://superuser.com/questions/1455762/ctrl-shift-number-key-combination-has-stopped-working-for-a-few-numbers
     fn handle_keydown_msg(&self, handle: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        // quiet.md: The IME owns this key even when it already cleared the marked range
+        // (for example Weasel committing Enter or cancelling the last character).
+        if VIRTUAL_KEY(wparam.loword()) == VK_PROCESSKEY {
+            translate_message(handle, wparam, lparam);
+            return Some(0);
+        }
         let mut lock = self.state.borrow_mut();
         let Some(input) = handle_key_event(handle, wparam, lparam, &mut lock, |keystroke| {
             PlatformInput::KeyDown(KeyDownEvent {

@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
-  <path fill="#eaebeb" d="M40 26l42 24-14 24-42-24Z"/>
-  <path fill="#dedfe0" d="M26 50l42 24-6 10-42-24Z"/>
-  <path fill="#f7f7f7" d="M68 74l14-24 10 18-12 22Z"/>
-  <path fill="none" stroke="#303335" stroke-width="5" stroke-linecap="round" d="M44 24c-8-2-12 4-10 10 2 5 8 9 14 12"/>
-  <path fill="none" stroke="#9cc0fa" stroke-width="7" stroke-linecap="round" d="M78 78c6 2 9 7 6 12"/>
-  <path fill="none" stroke="#3a85f7" stroke-width="7" stroke-linecap="round" d="M84 90c-5 4-14 4-22 0"/>
-  <path fill="none" stroke="#303335" stroke-width="1.6" stroke-linecap="round" d="M22 76l7-3M30 82l3-5M38 85l1-5"/>
+  <ellipse cx="60" cy="98" rx="36" ry="5" fill="#000000" fill-opacity="0.05"/>
+  <path fill="#f7f7f7" stroke="#9cc0fa" stroke-width="2" d="M44 24.6l30-6.4a3 3 0 0 1 3.6 2.3l5.3 24.9a3 3 0 0 1-2.3 3.6l-30 6.4a3 3 0 0 1-3.6-2.3l-5.3-24.9a3 3 0 0 1 2.3-3.6Z"/>
+  <path fill="none" stroke="#3a85f7" stroke-width="3" stroke-linecap="round" d="M51 32.5l18-3.8M52.6 40l12-2.6"/>
+  <path fill="#dedfe0" d="M30 58a6 6 0 0 1 6-6h48a6 6 0 0 1 6 6v8H30Z"/>
+  <path fill="#eaebeb" d="M20 66h80l-5.4 24.2a6 6 0 0 1-5.9 4.8H31.3a6 6 0 0 1-5.9-4.8Z"/>
+  <path fill="none" stroke="#6b7075" stroke-width="4" stroke-linecap="round" d="M52 79h16"/>
+  <path fill="#3a85f7" d="M97 24l1.8 4.2L103 30l-4.2 1.8L97 36l-1.8-4.2L91 30l4.2-1.8Z"/>
 </svg>

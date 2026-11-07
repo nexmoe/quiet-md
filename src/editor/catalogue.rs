@@ -186,6 +186,17 @@ impl Editor {
         self.layout.content
     }
 
+    /// How far a wide page-level table may reach past the text column on
+    /// each side: to the page's minimum margin, as in Feishu, but not over
+    /// a pinned catalogue (nor nearer to it than that margin).
+    pub(super) fn bleed(&self) -> (f32, f32) {
+        let l = match self.layout.cat {
+            CatMode::Pinned(u) => self.layout.ml - PAD - u.min(RESPONSE_MAX),
+            _ => self.layout.ml - PAD,
+        };
+        (l.max(0.), (self.layout.mr - PAD).max(0.))
+    }
+
     /// Recomputes the outline and the page margins for this frame.
     pub(super) fn update_catalogue(&mut self) {
         if self.cat_generation != Some(self.core.generation) {
@@ -193,7 +204,7 @@ impl Editor {
             self.cat_entries = Rc::new(entries(&self.core.doc));
         }
         let o = f32::from(self.pane_size().width);
-        self.layout = page_layout(o, self.column_max(), true, self.cat_pinned);
+        self.layout = page_layout(o, self.column_max(), !self.cat_entries.is_empty(), self.cat_pinned);
     }
 
     /// Scroll-spy: the last heading at most 90px below the viewport top. A
@@ -294,7 +305,7 @@ impl Editor {
             .cursor_pointer()
             .group("cat-pin")
             .hover(|s| s.bg(Theme::fill_hover_strong()))
-            .active(|s| s.bg(theme::rgbaf(31, 35, 41, 0.2)))
+            .active(|s| s.bg(theme::ta(31, 35, 41, 0.2)))
             .child(
                 icon(if pinned { "catalogue-collapse" } else { "catalogue-list" }, 18., Theme::text_caption())
                     .group_hover("cat-pin", |s| s.text_color(theme::c(craft::old::B500))),
@@ -325,7 +336,7 @@ impl Editor {
                 .block_mouse_except_scroll()
                 .cursor(CursorStyle::Arrow)
                 .when(list_w.is_none(), |d| d.w(px(42.)).h(px(PIN_H)).pt_0())
-                .when(floating, |d| d.bg(theme::rgbaf(255, 255, 255, 0.96)).rounded(px(8.)))
+                .when(floating, |d| d.bg(theme::ta(255, 255, 255, 0.96)).rounded(px(8.)))
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(pin)
                 .children(body)

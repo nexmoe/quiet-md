@@ -432,7 +432,7 @@ impl R<'_> {
             BlockKind::Countdown(c) => self.countdown(b, c, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
-            BlockKind::Table(t) => self.table(b, t, cx),
+            BlockKind::Table(t) => self.table(b, t, env.root, cx),
             BlockKind::Grid => self.grid(b, env, cx),
             BlockKind::Column { .. } => self.blocks(&b.children, env, cx).into_any_element(),
             BlockKind::Raw { tag, .. } => div()
@@ -682,7 +682,7 @@ impl R<'_> {
                     .mr(px(8.))
                     .rounded(px(st.num("task.radius")))
                     .border_1()
-                    .when(!done, |d| d.border_color(Theme::todo_box()).bg(Theme::bg_body()).hover(|s| s.border_color(Theme::primary())))
+                    .when(!done, |d| d.border_color(Theme::todo_box()).bg(crate::theme::raised(Theme::bg_body())).hover(|s| s.border_color(Theme::primary())))
                     .when(done, |d| d.border_color(fill).bg(fill))
                     .flex()
                     .items_center()
@@ -799,7 +799,7 @@ impl R<'_> {
                 .text_color(Theme::text_caption())
                 .cursor_pointer()
                 .hover(|s| s.bg(Theme::fill_hover_strong()))
-                .active(|s| s.bg(rgba(0x1f232933)))
+                .active(|s| s.bg(crate::theme::adapt(rgba(0x1f232933).into())))
         };
         // 1px divider centred in the 17px gap after a toolbar item.
         let sep = |right: f32| div().absolute().top(px(3.)).right(px(right)).w(px(1.)).h(px(16.)).bg(Theme::line_divider());
@@ -1627,7 +1627,7 @@ impl Editor {
                 .h(px(24.))
                 .px(px(9.))
                 .rounded(px(8.))
-                .bg(Theme::bg_body())
+                .bg(crate::theme::raised(Theme::bg_body()))
                 .border_1()
                 .border_color(Theme::button_border())
                 .shadow(theme::shadow_button())
@@ -1750,7 +1750,7 @@ pub(super) fn block_feishu(&self, b: &Block, siblings: &[Block], idx: usize, env
             BlockKind::Countdown(c) => self.countdown(b, c, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
-            BlockKind::Table(t) => self.table(b, t, cx),
+            BlockKind::Table(t) => self.table(b, t, env.root, cx),
             BlockKind::Grid => self.grid(b, env, cx),
             BlockKind::Column { .. } => self.blocks(&b.children, env, cx).into_any_element(),
             BlockKind::Raw { tag, .. } => div()
@@ -1869,7 +1869,7 @@ fn text_block_feishu(&self, b: &Block, env: Env, cx: &mut Context<Editor>) -> An
                         .flex()
                         .items_center()
                         .whitespace_nowrap()
-                        .font_family("Helvetica Neue")
+                        .font_family(crate::theme::NUMERAL_FONT)
                         .font_weight(weight)
                         .text_size(px(size))
                         .text_color(Theme::primary())
@@ -1915,7 +1915,7 @@ fn list_item_feishu(&self, b: &Block, siblings: &[Block], idx: usize, env: Env, 
                 .px(px(2.))
                 .mr(px(6.))
                 .whitespace_nowrap()
-                .font_family("Helvetica Neue")
+                .font_family(crate::theme::NUMERAL_FONT)
                 .text_size(px(spec.size))
                 .text_color(Theme::primary())
                 .child(core::ordered_marker(core::ordered_number(siblings, idx), env.depth))
@@ -1930,7 +1930,7 @@ fn list_item_feishu(&self, b: &Block, siblings: &[Block], idx: usize, env: Env, 
                     .border_1()
                     .border_color(Theme::text())
                     .hover(|s| s.border_color(Theme::primary()))
-                    .bg(Theme::bg_body())
+                    .bg(crate::theme::raised(Theme::bg_body()))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -2043,7 +2043,7 @@ fn code_block_feishu(&self, b: &Block, lang: &str, wrap: bool, cx: &mut Context<
                 .text_color(Theme::text_caption())
                 .cursor_pointer()
                 .hover(|s| s.bg(Theme::fill_hover_strong()))
-                .active(|s| s.bg(rgba(0x1f232933)))
+                .active(|s| s.bg(crate::theme::adapt(rgba(0x1f232933).into())))
         };
         // 1px divider centred in the 17px gap after a toolbar item.
         let sep = |right: f32| div().absolute().top(px(3.)).right(px(right)).w(px(1.)).h(px(16.)).bg(Theme::line_divider());

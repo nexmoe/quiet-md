@@ -251,7 +251,7 @@ fn palette_bg(c: (u8, u8, u8, f32)) -> Option<Option<ColorName>> {
         .map(|n| Some(ColorName(n.to_string())))
 }
 
-fn link_ok(h: &str) -> bool {
+pub fn link_ok(h: &str) -> bool {
     let l = h.to_ascii_lowercase();
     ["http://", "https://", "mailto:", "ftp://"].iter().any(|p| l.starts_with(p))
 }
