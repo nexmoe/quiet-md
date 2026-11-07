@@ -46,6 +46,7 @@ pub use native::Preview;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod native {
     use super::*;
+    use base64::Engine;
     use raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, WindowHandle};
     use wry::{WebView, WebViewBuilder, dpi::{LogicalPosition, LogicalSize}};
 
@@ -58,12 +59,13 @@ mod native {
         }
 
         fn with_host(host: Host, html: String, callback: impl Fn(String) + 'static) -> Result<Self, String> {
+            let initial_url = format!("data:text/html;charset=utf-8;base64,{}", base64::engine::general_purpose::STANDARD.encode(html.as_bytes()));
             let builder = WebViewBuilder::new().with_html(html).with_visible(false).with_focused(false)
                 .with_incognito(true).with_general_autofill_enabled(false).with_devtools(false)
-                .with_navigation_handler(|url| {
+                .with_navigation_handler(move |url| {
                     #[cfg(test)]
-                    eprintln!("HTML navigation: {url}");
-                    url == "about:blank" || url == "about:srcdoc"
+                    eprintln!("HTML navigation: {}", url.chars().take(96).collect::<String>());
+                    url == "about:blank" || url == "about:srcdoc" || url == initial_url
                 })
                 .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
                 .with_download_started_handler(|_, _| false)
