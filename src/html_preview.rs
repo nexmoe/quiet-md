@@ -40,26 +40,6 @@ fn clip_overlays(mut bounds: Bounds<Pixels>, overlays: &[Bounds<Pixels>]) -> Bou
     bounds
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gpui::{point, size, px};
-    fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> { Bounds::new(point(px(x), px(y)), size(px(w), px(h))) }
-
-    #[test]
-    fn overlays_clip_only_intersecting_previews() {
-        let first = rect(370., 207., 820., 160.); let second = rect(370., 409., 820., 160.);
-        let toolbar = rect(351., 324., 439., 56.);
-        assert_eq!(clip_overlays(first, &[toolbar]), rect(370., 207., 820., 117.));
-        assert_eq!(clip_overlays(second, &[toolbar]), second);
-        assert_eq!(clip_overlays(first, &[]), first);
-        assert!(clip_overlays(first, &[first]).is_empty());
-        let slash = rect(363., 254., 261., 365.);
-        let visible = clip_overlays(first, &[toolbar, slash]);
-        assert!(!visible.is_empty()); assert!(!visible.intersects(&toolbar)); assert!(!visible.intersects(&slash));
-    }
-}
-
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use native::Preview;
 
@@ -78,13 +58,20 @@ mod native {
         }
 
         fn with_host(host: Host, html: String, callback: impl Fn(String) + 'static) -> Result<Self, String> {
-            let web = WebViewBuilder::new().with_html(html).with_visible(false).with_focused(false)
+            let builder = WebViewBuilder::new().with_html(html).with_visible(false).with_focused(false)
                 .with_incognito(true).with_general_autofill_enabled(false).with_devtools(false)
-                .with_navigation_handler(|url| url == "about:blank" || url == "about:srcdoc")
+                .with_navigation_handler(|url| {
+                    #[cfg(test)]
+                    eprintln!("HTML navigation: {url}");
+                    url == "about:blank" || url == "about:srcdoc"
+                })
                 .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
                 .with_download_started_handler(|_, _| false)
-                .with_ipc_handler(move |request| callback(request.body().clone()))
-                .build_as_child(&host).map_err(|e| e.to_string())?;
+                .with_ipc_handler(move |request| callback(request.body().clone()));
+            #[cfg(test)]
+            let builder = builder.with_on_page_load_handler(|_, url| eprintln!("HTML page load: {url}"))
+                .with_initialization_script("addEventListener('error',e=>window.ipc.postMessage(JSON.stringify({type:'error',message:e.message})))");
+            let web = builder.build_as_child(&host).map_err(|e| e.to_string())?;
             Ok(Self { web, host })
         }
 
@@ -214,7 +201,10 @@ mod native {
         fn message(rx: &mpsc::Receiver<Value>, kind: &str) -> Value {
             let deadline = Instant::now() + Duration::from_secs(30);
             loop {
-                while let Ok(value) = rx.try_recv() { if value["type"] == kind { return value; } }
+                while let Ok(value) = rx.try_recv() {
+                    assert_ne!(value["type"], "error", "HTML script failed: {value}");
+                    if value["type"] == kind { return value; }
+                }
                 assert!(Instant::now() < deadline, "Timed out waiting for HTML {kind}");
                 unsafe {
                     let mut msg = MSG::default();
@@ -238,6 +228,12 @@ mod native {
             let preview = Preview::with_host(Host::child_of(parent.0).unwrap(), shell, move |body| {
                 if let Ok(value) = serde_json::from_str::<Value>(&body) { let _ = tx.send(value); }
             }).unwrap();
+            // Match production placement: the controller has a visible, nonzero host.
+            unsafe {
+                SetWindowPos(preview.host.hwnd, None, 0, 0, 640, 480, SWP_NOACTIVATE | SWP_NOZORDER).unwrap();
+                let _ = ShowWindow(parent.0, SW_SHOWNOACTIVATE);
+            }
+            preview.host.show(true);
             preview.web.set_bounds(wry::Rect { position: LogicalPosition::new(0., 0.).into(), size: LogicalSize::new(640., 480.).into() }).unwrap();
             preview.web.set_visible(true).unwrap();
             assert_eq!(message(&rx, "ready")["nonce"], "windows-runtime-test");
@@ -264,4 +260,24 @@ impl Preview {
     pub fn inspect(&self, _: &str) {}
     pub fn hide(&self) {}
     pub fn place(&self, _: Bounds<Pixels>, _: Bounds<Pixels>, _: &Window) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{point, size, px};
+    fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> { Bounds::new(point(px(x), px(y)), size(px(w), px(h))) }
+
+    #[test]
+    fn overlays_clip_only_intersecting_previews() {
+        let first = rect(370., 207., 820., 160.); let second = rect(370., 409., 820., 160.);
+        let toolbar = rect(351., 324., 439., 56.);
+        assert_eq!(clip_overlays(first, &[toolbar]), rect(370., 207., 820., 117.));
+        assert_eq!(clip_overlays(second, &[toolbar]), second);
+        assert_eq!(clip_overlays(first, &[]), first);
+        assert!(clip_overlays(first, &[first]).is_empty());
+        let slash = rect(363., 254., 261., 365.);
+        let visible = clip_overlays(first, &[toolbar, slash]);
+        assert!(!visible.is_empty()); assert!(!visible.intersects(&toolbar)); assert!(!visible.intersects(&slash));
+    }
 }
