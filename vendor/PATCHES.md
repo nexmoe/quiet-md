@@ -1,6 +1,6 @@
 # vendor 补丁
 
-`vendor/gpui` 是 crates.io 的 gpui 0.2.2，`vendor/taffy` 是 taffy 0.9.0，都打了本地补丁。项目通过 `Cargo.toml` 的 `[patch.crates-io]` 使用这两个目录。补丁处都带 `quiet.md:` 注释；完整列表以下表和 diff 为准。
+`vendor/gpui` 是 crates.io 的 gpui 0.2.2，`vendor/taffy` 是 taffy 0.9.0，`vendor/xattr` 是 xattr 0.2.3，都打了本地补丁。项目通过 `Cargo.toml` 的 `[patch.crates-io]` 使用这些目录。补丁处都带 `quiet.md:` 注释；完整列表以下表和 diff 为准。
 
 和上游对比：
 
@@ -13,6 +13,8 @@ diff -ru $R/taffy-0.9.0/src vendor/taffy/src
 升级上游时，按下表逐条重新打补丁，并在补丁处保留注释。
 
 ## GPUI 0.2.2
+
+- `platform/windows/events.rs`: `VK_PROCESSKEY` 始终交给 IME，不在组合结束后重新派发成编辑快捷键，避免小狼毫退格、回车被处理两次。
 
 | # | 文件 | 改动 | 用途 |
 |---|---|---|---|
@@ -32,16 +34,26 @@ diff -ru $R/taffy-0.9.0/src vendor/taffy/src
 | 14 | `platform/mac/text_system.rs`、`platform/mac.rs`、`platform.rs` | `font_ids_by_postscript_name` 一个名字对应多个 FontId，CoreText 回退来的字体按字形数挑出同一份字体；新增 `check_fallback_glyphs` 供测试调用（`editor::text::tests`） | 系统回退用的苹方（PingFangUI.ttc）和下载的 PingFang.ttc 都叫 `PingFangSC-Regular`，字形表不同；原来按名字查到另一份，编辑器里的中文画成错字 |
 | 15 | `platform/windows/directx_renderer.rs` | 调试构建编译着色器时，路径按宽字符串传给 `D3DCompileFromFile`（原来 `to_str().unwrap()`） | 仓库放在含中文等非 ASCII 字符的目录下也能跑调试构建 |
 | 16 | `platform/windows/clipboard.rs` | 读剪贴板时文字、图片、复制的文件一起读（原来只取第一个认得的格式）；新增位图（`CF_DIB`，转成 PNG）；复制的图片文件读成图片，其他文件的路径按行分开（原来连成一串） | 截图工具放进剪贴板的位图能粘贴，不再贴出截图文件的路径；从资源管理器复制的图片能粘贴 |
-| 17 | `gpui.rs`、`svg_renderer.rs` | 公开 `SvgRenderer` / `SvgSize` 并补齐公开 API 文档 | 文本绘图按屏幕像素密度和当前缩放在后台栅格化，避免固定 1× 图片被拉伸 |
-| 18 | `platform.rs`、`platform/{mac,windows,linux}` | 新增 `CursorStyle::ZoomIn`；macOS 15+ 和 Linux 使用系统光标，Windows 和旧 macOS 使用内置放大镜 | 文本绘图悬停时提示点击打开图片预览 |
-| 19 | `platform/mac/metal_atlas.rs` | 删除图片时立即移除对应 key，重复删除不再重复扣减共享纹理计数；与 Windows / Blade 后端一致 | 修复反复预览多张图表后其他图片消失，以及 Metal 查找已释放纹理时崩溃 |
-| 20 | `svg_renderer.rs`、`Cargo.toml` | 从 SVG 系统字体库移除 LastResort 占位字体，并启用 resvg 的 `raster-images` 功能以绘制字体内的位图字形 | 防止含 emoji 的整行标签被替换成问号方框，并实际显示 Apple Color Emoji 的彩色字形 |
+| 17 | `elements/div.rs` | `paint_scroll_listener`：只在一个方向上可滚动的容器，只接收偏向这个方向的滚动（横向量大于竖向量才横滚，反之才竖滚）。原来竖向滚轮在只能横滚的容器上会被转成横滚，触控板竖滑带的少量横向分量也会照单全收；原有的方向锁只在两个方向都有量时才生效，单向容器另一方向恒为 0，所以从不触发 | 竖着滚动经过宽表格时，表格不再跟着左右滑动；在表格上横向滑动仍然能横滚 |
+
+| 18 | `platform/linux/wayland/client.rs`、`platform/linux/x11/client.rs` | 外观变化时先复制窗口句柄，释放 client 的 RefCell 借用后再触发窗口回调 | 避免回调重新访问平台、更新菜单时触发重复借用 panic |
+
+| 19 | `gpui.rs`、`svg_renderer.rs` | 公开 `SvgRenderer` / `SvgSize` 并补齐公开 API 文档 | 文本绘图按屏幕像素密度和当前缩放在后台栅格化，避免固定 1× 图片被拉伸 |
+| 20 | `platform.rs`、`platform/{mac,windows,linux}` | 新增 `CursorStyle::ZoomIn`；macOS 15+ 和 Linux 使用系统光标，Windows 和旧 macOS 使用内置放大镜 | 文本绘图悬停时提示点击打开图片预览 |
+| 21 | `platform/mac/metal_atlas.rs` | 删除图片时立即移除对应 key，重复删除不再重复扣减共享纹理计数；与 Windows / Blade 后端一致 | 修复反复预览多张图表后其他图片消失，以及 Metal 查找已释放纹理时崩溃 |
+| 22 | `svg_renderer.rs`、`Cargo.toml` | 从 SVG 系统字体库移除 LastResort 占位字体，并启用 resvg 的 `raster-images` 功能以绘制字体内的位图字形 | 防止含 emoji 的整行标签被替换成问号方框，并实际显示 Apple Color Emoji 的彩色字形 |
 
 ## taffy 0.9.0
 
 | 文件 | 改动 | 用途 |
 |---|---|---|
 | `compute/grid/track_sizing.rs` | 「超出限制」阶段只对受影响的轨道分配空间，增长上限只看 `fit-content()` 参数。这是从 taffy 0.13 移植的修复 | 跨多个 auto 行的合并单元格在 min-content 约束下原来不会撑高这些行 |
+
+## xattr 0.2.3
+
+| 文件 | 改动 | 用途 |
+|---|---|---|
+| `src/sys/mod.rs` | Linux/Android 下 `ENOATTR` 映射为 `::libc::ENODATA` | 解决现代 libc crate 在 Linux GNU 下没有 `ENOATTR` 常量导致的编译错误 |
 
 ## 删掉的上游文件
 

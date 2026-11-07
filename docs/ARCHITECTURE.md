@@ -38,7 +38,7 @@ main.rs ─ 窗口
 3. 调用 `Editor::changed()`：
    - 先 `core.reveal_caret()`：如果选区（或块选区）两端被折叠藏起来了，就展开把它藏起来的标题或列表项；
    - 有改动时发 `EditorEvent::Changed`，同时刷新查找结果、斜杠菜单和 @ 面板。
-4. `Workspace` 收到 `Changed` 后调用 `schedule_save`，500ms 后 `flush()` 写盘。写盘失败时改动保持未保存，顶栏显示错误，切换文档、新建、退出前会询问。
+4. `Workspace` 收到 `Changed` 后调用 `schedule_save`，500ms 后 `flush()` 写盘。写盘失败时改动保持未保存，顶栏显示错误，切换文档、新建、退出前会询问。保存失败对话框支持重试、重新载入磁盘内容、另存恢复副本；重新载入同时重置编辑器及同文档窗口的状态。退出检查所有窗口，处理单个冲突后重新检查，仍有冲突时不会退出。系统退出阶段仍保存失败的正文存入本地应用数据目录的 `quiet-md/recovery/<文档库标识>/`，下次打开同一文档库时恢复为新文档，不覆盖磁盘原版。
 
 Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机编辑后检查：
 
@@ -101,7 +101,7 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 
 | 模块 | 内容 |
 |---|---|
-| `main.rs` | 入口；`FDL_SCRIPT` 脚本模式；重新导出 `fdl_core` 的模块 |
+| `main.rs` | 入口；`FDL_SCRIPT` 脚本模式（仅 `devtools` 特性）；重新导出 `fdl_core` 的模块 |
 | `guides.rs` | 文档库是空的时放入内置的「开始指南」（只放一次） |
 | `app.rs` | `Workspace`：两栏窗口、打开 / 新建 / 保存 / 删除、保存状态、提醒调度 |
 | `html.rs` / `printing.rs` / `transfer.rs` | 导出 HTML / PDF、打印、导入导出的界面 |
@@ -114,7 +114,7 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 | `ui.rs` / `input.rs` | 共用小部件（菜单外壳、菜单行、白色药丸按钮、提示、Toast）、单行输入框 |
 | `highlight.rs` | 代码高亮 |
 | `assets.rs` | 编进二进制的图标、字体、封面图库 |
-| `devtools.rs` | 脚本驱动（见 tools/harness/README.md） |
+| `devtools.rs` | 脚本驱动，只在 `--features devtools` 构建里编入（见 tools/harness/README.md） |
 
 编辑器（`src/editor/`）：
 
@@ -146,4 +146,4 @@ Core 的不变量由 `crates/core/src/editor/fuzz_tests.rs` 在每一步随机�
 
 应用层 `src/diagram.rs` 使用固定提交的 pele-rs（与官方 Pele 1.13.0 对齐的 Rust 移植）输出具体颜色的 SVG。`src/editor/diagram.rs` 在后台生成预览，输入去抖、丢弃过期结果并保留最后一次成功的图表；按屏幕像素密度生成有尺寸上限的 BGRA 图片，缓存不超过 64 MiB。绘图内部编辑保持外层文档滚动位置，预览加载和报错使用同一固定区域。点击图表复用 `image.rs` 的图片预览，后台从最后成功的 SVG 生成适合预览缩放的清晰图片；缩放、平移和旋转只影响预览，不修改文档。
 
-HTML / PDF 导出复用相同的 SVG 引擎。HTML 是内嵌图片和图表的独立文件。macOS 用系统 WebKit 导出 PDF；Windows 的 `printing_windows.rs` 在独立 STA 线程用系统 WebView2 Runtime、隐藏窗口和隔离临时目录导出 A4 PDF，超时或失败时保留已有目标文件。文档界面和图表渲染不访问网络、不执行 JavaScript。
+HTML / PDF 导出复用相同的 SVG 引擎。HTML 是内嵌图片和图表的独立文件。macOS 用系统 WebKit 导出 PDF；Windows 复用 `printing.rs` 的系统 WebView2 Runtime 后端，用隐藏窗口和临时目录导出 A4 PDF，超时或失败时保留已有目标文件。文档界面和图表渲染不访问网络、不执行 JavaScript。

@@ -2436,6 +2436,18 @@ impl Interactivity {
                             delta_y = delta.x;
                         }
                     }
+                    // quiet.md: a container that scrolls on one axis only takes
+                    // gestures that lean its way. Otherwise a mouse wheel over a
+                    // wide table turned into sideways scrolling, and a trackpad
+                    // swipe's small sideways drift slid the table while the page
+                    // scrolled (the lock below never fires: one delta is zero).
+                    if overflow.x != overflow.y {
+                        if delta.x.abs() > delta.y.abs() {
+                            delta_y = Pixels::ZERO;
+                        } else {
+                            delta_x = Pixels::ZERO;
+                        }
+                    }
                     if !allow_concurrent_scroll && !delta_x.is_zero() && !delta_y.is_zero() {
                         if delta_x.abs() > delta_y.abs() {
                             delta_y = Pixels::ZERO;

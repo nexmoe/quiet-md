@@ -188,7 +188,7 @@ pub(crate) fn newer(a: &str, b: &str) -> bool {
 fn supported() -> bool {
     if platform().is_none() || public_key().is_none() { return false }
     if override_url().is_some() { return true }
-    if std::env::var_os("FDL_SCRIPT").is_some() { return false }
+    if crate::devtools::scripted() { return false }
     #[cfg(target_os = "macos")]
     { app_bundle().is_some_and(|app| team(&app).is_some()) }
     #[cfg(target_os = "windows")]

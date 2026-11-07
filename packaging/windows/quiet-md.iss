@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.4"
+  #define AppVersion "0.1.7"
 #endif
 #ifndef AppSource
   #define AppSource "..\..\target\release"

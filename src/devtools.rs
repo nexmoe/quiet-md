@@ -9,7 +9,7 @@
 //!   pick <path>[|<path>...] (answers the next file dialog instead of showing it)
 //! For profiling: bench <n> <step> (runs the step n times, drawing a frame
 //!   synchronously after each, and prints step / frame / editor-render times) |
-//!   wheel x y dy (one scroll-wheel event).
+//!   wheel x y dy [dx] (one scroll-wheel event; dx: sideways component).
 //! For demo videos: glide x y ms (eased pointer move from the last position) |
 //!   scroll x y dy ms (eased wheel scroll) | record <file.mp4> | record stop |
 //!   caption <text> (a timed note in the pointer track, for titles).
@@ -24,6 +24,9 @@ use std::time::{Duration, Instant};
 fn fps() -> f64 {
     std::env::var("FDL_RECORD_FPS").ok().and_then(|v| v.parse().ok()).filter(|&f: &f64| f > 0.).unwrap_or(30.)
 }
+
+/// A script drives this run: other apps, dialogs and the updater stay out of it.
+pub fn scripted() -> bool { std::env::var_os("FDL_SCRIPT").is_some() }
 
 /// Time spent in the editor's `render` during the last benched frame.
 pub static RENDER_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -212,6 +215,17 @@ pub fn start(window: &mut Window, cx: &mut App) {
             if cmd == "mark" || cmd == "commit" {
                 native::ime(ns_view, cmd == "commit", rest);
                 cx.background_executor().timer(Duration::from_millis(120)).await;
+                continue;
+            }
+            if cmd == "check-export-safety" {
+                cx.update(|cx| {
+                    let handle = cx.windows().into_iter().find_map(|w| w.downcast::<crate::app::Workspace>()).unwrap();
+                    handle.update(cx, |ws, window, cx| ws.check_export_safety(window, cx)).unwrap();
+                }).unwrap();
+                continue;
+            }
+            if cmd == "check-save-safety" {
+                cx.update(|cx| crate::app::check_save_safety(rest.trim(), cx)).unwrap();
                 continue;
             }
             #[cfg(target_os = "macos")]
@@ -592,7 +606,9 @@ fn run(cmd: &str, rest: &str, window: &mut Window, cx: &mut App) {
             if n.len() >= 3 {
                 let event = ScrollWheelEvent {
                     position: point(px(n[0]), px(n[1])),
-                    delta: ScrollDelta::Pixels(point(px(0.), px(-n[2]))),
+                    // An optional fourth number is a sideways component, as a
+                    // trackpad swipe carries; positive reveals content on the right.
+                    delta: ScrollDelta::Pixels(point(px(-n.get(3).copied().unwrap_or(0.)), px(-n[2]))),
                     ..Default::default()
                 };
                 window.dispatch_event(PlatformInput::ScrollWheel(event), cx);

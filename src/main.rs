@@ -1,6 +1,8 @@
 #![recursion_limit = "512"]
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+pub(crate) const APP_ID: &str = "com.s1dashu.quietmd";
+
 mod app;
 mod shared_store;
 mod quick_note;
@@ -8,7 +10,16 @@ mod assets;
 mod changelog;
 mod guides;
 mod clipboard;
+#[cfg(feature = "devtools")]
 mod devtools;
+/// Without the `devtools` feature (release builds) nothing reads FDL_SCRIPT.
+#[cfg(not(feature = "devtools"))]
+mod devtools {
+    pub static RENDER_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    pub fn scripted() -> bool { false }
+    pub fn start(_: &mut gpui::Window, _: &mut gpui::App) {}
+    pub fn take_pick() -> Option<Vec<std::path::PathBuf>> { None }
+}
 mod docinfo;
 mod docmenu;
 mod diagram;
@@ -73,6 +84,8 @@ fn open_main_window(scripted: bool, cx: &mut App) {
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             window_background: crate::theme::window_background(),
+            app_id: Some(crate::APP_ID.into()),
+            window_decorations: if cfg!(target_os = "linux") { Some(WindowDecorations::Client) } else { None },
             titlebar: Some(TitlebarOptions {
                 title: Some("Quiet.md".into()),
                 appears_transparent: cfg!(any(target_os = "macos", target_os = "windows")),
@@ -92,7 +105,7 @@ fn open_main_window(scripted: bool, cx: &mut App) {
 
 fn main() {
     logging::init();
-    let scripted = std::env::var_os("FDL_SCRIPT").is_some();
+    let scripted = devtools::scripted();
     // No single-instance guard: copies may share a library (builds tested
     // side by side). `Store` rereads an index another copy rewrote before
     // writing its own, and `guides` seeds a new library only once.

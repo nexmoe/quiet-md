@@ -261,7 +261,7 @@ impl Workspace {
                         .px(px(5.))
                         .py(px(PAD))
                         .child(recorder())
-                        .when(crate::printing::PDF_SUPPORTED, |d| d.child(sub_item("dm-pdf", "PDF").on_click(cx.listener(move |w, _, window, cx| w.export_pdf(&pdf, window, cx)))))
+                        .when(crate::printing::SUPPORTED, |d| d.child(sub_item("dm-pdf", "PDF").on_click(cx.listener(move |w, _, window, cx| w.export_pdf(&pdf, window, cx)))))
                         .child(sub_item("dm-md", "Markdown").on_click(cx.listener(move |w, _, _, cx| w.open_export_md(&id, cx))))
                         .child(sub_item("dm-html", "HTML").on_click(cx.listener(move |w, _, _, cx| w.export_html(&html, cx))))
                         .into_any_element()

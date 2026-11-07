@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  English · <a href="README.zh-CN.md">简体中文</a>
+  English · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
   <a href="#download"><b>Download</b></a> ·
   <a href="#performance">Performance</a> ·
   <a href="#features">Features</a> ·
-  <a href="#contributing">Contributing</a>
+  <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 <p align="center">
@@ -38,6 +38,8 @@
 
 > [!NOTE]
 > Quiet.md is in **beta** and changing quickly. If you hit a bug or have an idea, please [open an issue](https://github.com/s1dashu/quiet-md/issues) — or better, send a pull request.
+
+Linux support is experimental and currently built from source; see the [Linux instructions and validation limits](CONTRIBUTING.md#linux-experimental).
 
 ## Why Quiet.md
 
@@ -63,7 +65,7 @@
 - **macOS**: unzip and drag `quiet.md.app` into Applications. The app is signed and notarized by Apple.
 - **Windows**: run the installer. By default it installs for the current user only, and uninstalling never deletes your notes. If SmartScreen appears on first launch, click **More info → Run anyway**.
 
-You can also download from [Quiet.md](https://quiet.md/?lang=en). Every release and its SHA-256 checksums are on [GitHub Releases](https://github.com/s1dashu/quiet-md/releases). There is no Intel Mac build yet; you can [build from source](CONTRIBUTING.md#从源码构建).
+You can also download from [Quiet.md](https://quiet.md/?lang=en). Every release and its SHA-256 checksums are on [GitHub Releases](https://github.com/s1dashu/quiet-md/releases). There is no Intel Mac build yet; you can [build from source](CONTRIBUTING.md#building-from-source).
 
 On first launch, Quiet.md puts a **Getting started** guide into an empty library — a ten-minute tour of the main features. Existing notes are never overwritten.
 
@@ -97,8 +99,21 @@ A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character doc
 - **Shortcuts**: press `⌘ /` (`Ctrl+/` on Windows) to see them all. Every one can be rebound. On Windows, Ctrl stands in for ⌘ and Alt for ⌥; the app and the Getting started guides show the keys for your system.
 - **Themes**: four built-in styles — Craft, Feishu, Notion and Obsidian — each with a dark variant, or write your own in CSS; see [docs/THEMES.md](docs/THEMES.md).
 
+## Contributors
+
+Thanks to everyone who has helped build Quiet.md. Issues and pull requests are welcome: building, testing and code conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+[![Contributors](https://raw.githubusercontent.com/s1dashu/quiet-md/contributors-assets/docs/images/contributors.svg?v=1)](https://github.com/s1dashu/quiet-md/graphs/contributors)
+
 ## Recent updates
 
+- **0.1.7** (Nov 6): safer multi-window saving, conflict recovery and disk writes; restricted export file access; Markdown exports keep inline attachments. Fixed Chinese input deletion with Weasel on Windows.
+- **0.1.6** (Nov 6): smoother window switching and typing, wider tables, regular saves during continuous typing, and Option+Space for global quick notes on macOS. Windows adds image paste, PDF export and printing, with corrected word deletion.
+- **0.1.5** (Nov 5): the app is now called Quiet.md; your library and notes stay where they were.
+  - Manage several documents at once from Home: duplicate, move or delete them together.
+  - Empty the Trash in one step; arrow keys move through the insert menu's icons; deleting every document no longer creates an empty one.
+  - After an in-app update, the sidebar shows once what changed in the new version.
+  - Windows: shortcuts and the built-in guide read Ctrl / Alt, and a failed launch explains itself and leaves a log.
 - **0.1.4** (Nov 5):
   - In-app updates: when a new version is out, an **Update** button appears at the top of the sidebar. The download is verified against its signature, and a restart finishes the install; open documents are saved first. Automatic checks can be turned off in **Settings › General**. A check only fetches a version manifest and sends no data. Version 0.1.3 and earlier need a one-time manual download of 0.1.4.
   - Dark mode: choose System, Light or Dark in **Settings › Appearance**. Built-in and custom themes all have a dark look; export and printing stay light.
@@ -107,28 +122,6 @@ A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character doc
 - **0.1.1** (Nov 3): first Windows x64 release, installed per user, keeping your notes on uninstall. Polished the Chinese and English interface and the built-in guide.
 
 Full notes for each version are on [Releases](https://github.com/s1dashu/quiet-md/releases).
-
-## Where your files live
-
-By default, `~/Documents/Quiet.md` (on Windows, `Quiet.md` inside your Documents folder). Each note is an XML file in `docs/`; images and attachments are in `assets/`.
-
-For the folder layout and format details, see [docs/FORMAT.md](docs/FORMAT.md).
-
-## Contributing
-
-Quiet.md is still in beta and there is plenty to do: fixing bugs, adding features, supporting more platforms. Issues and pull requests are welcome.
-
-Quick start from source (Rust toolchain is pinned in `rust-toolchain.toml`; macOS needs the Xcode Command Line Tools, Windows needs the Visual Studio 2022 C++ Build Tools and the Windows SDK):
-
-```sh
-cargo build --release --locked
-QUIET_MD_HOME=/tmp/quiet-md-dev ./target/release/quiet_md   # use a scratch library, not your real one
-scripts/check.sh                                            # tests + clippy with zero warnings
-```
-
-The repository is a Cargo workspace: `crates/core` (`fdl_core`) is the document engine — model, DocxXML, editing core and undo, library storage, import and export — and does not depend on GPUI. The root crate is the GPUI app. GPUI and taffy are patched copies in `vendor/` (see [vendor/PATCHES.md](vendor/PATCHES.md)).
-
-Building, testing and packaging are covered in [CONTRIBUTING.md](CONTRIBUTING.md), the code structure in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and code conventions in [AGENTS.md](AGENTS.md). These developer docs are currently written in Chinese.
 
 ## License
 

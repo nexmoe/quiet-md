@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Quiet.md
+Comment=Local notes
+Exec=quiet_md
+Icon=com.s1dashu.quietmd
+Terminal=false
+Categories=Office;TextEditor;
+StartupWMClass=com.s1dashu.quietmd

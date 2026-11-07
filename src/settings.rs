@@ -148,7 +148,7 @@ pub(crate) fn refresh_all(this: &mut Workspace, cx: &mut Context<Workspace>) {
 /// A theme file in the user's editor; scripted runs only log it (they must
 /// not start other apps).
 fn open_in_editor(p: &std::path::Path, cx: &mut App) {
-    if std::env::var_os("FDL_SCRIPT").is_some() { eprintln!("devtools: open {}", p.display()); return }
+    if crate::devtools::scripted() { eprintln!("devtools: open {}", p.display()); return }
     cx.open_url(&format!("file://{}", p.display()));
 }
 
@@ -977,6 +977,8 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "大小" => "Size",
         "当前系统不支持" => "Not supported on this platform",
         "打印超时，请稍后重试" => "Printing timed out. Please try again.",
+        "打印失败，请重试" => "Printing failed. Please try again.",
+        "需要 Microsoft Edge WebView2 运行时" => "Requires the Microsoft Edge WebView2 Runtime",
         "没有找到匹配的结果，尝试其他关键词进行搜索" => "No results. Try another search term.",
         "请先关闭正在编辑这些文档的其他窗口，再删除" => "Close other windows editing these documents before deleting them.",
         "删除成功" => "Deleted successfully",
@@ -1215,7 +1217,7 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "关注文档更新" => "Follow document updates",
         "刚刚" => "just now",
         "文档不存在" => "Document not found",
-        "文档已被另一个实例修改，未覆盖磁盘内容。请先将当前内容导出，再重新打开文档" => "Another instance modified this document. The file was not overwritten. Export your changes, then reopen the document.",
+        "文档已被另一个实例修改，未覆盖磁盘内容。请另存副本或重新载入磁盘版本" => "Another instance modified this document. The file was not overwritten. Save a copy or reload the version on disk.",
         "这个文档库由更新版本的 Quiet.md 创建，部分内容可能无法正确显示，请升级后再编辑" => "These documents were created by a newer version of Quiet.md. Update the app before editing them.",
         _ => text,
     }

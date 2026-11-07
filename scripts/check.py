@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared macOS and Windows checks; run inside the platform build environment."""
+"""Shared macOS, Windows and Linux checks; run inside the platform build environment."""
 import os
 from pathlib import Path
 import subprocess
@@ -19,3 +19,5 @@ for image in source.rglob("*"):
         assert target.read_bytes() == image.read_bytes(), f"Bundled guide asset is stale: {target}"
 print("Bundled guide assets match their sources")
 cargo("clippy", "--release", "--workspace", "--locked", "--all-targets", "--", "-D", "warnings")
+# The harness build (script driver compiled in) must stay clean too.
+cargo("clippy", "--release", "--workspace", "--locked", "--all-targets", "--features", "devtools", "--", "-D", "warnings")

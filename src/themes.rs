@@ -64,8 +64,11 @@ pub struct Prop {
 }
 
 /// The system families generic CSS names resolve to.
-pub const SYSTEM: &str = ".SystemUIFont";
+pub const SYSTEM: &str = crate::theme::UI_FONT;
+#[cfg(not(target_os = "linux"))]
 pub const SYSTEM_MONO: &str = ".AppleSystemUIFontMonospaced";
+#[cfg(target_os = "linux")]
+pub const SYSTEM_MONO: &str = crate::theme::MONO_FONT;
 
 pub static PROPS: LazyLock<Vec<Prop>> = LazyLock::new(|| {
     use Def::*;
@@ -813,6 +816,8 @@ fn base_css(feishu: bool, name: &str, name_en: &str, description: &str) -> Strin
             Kind::Len => format!("{}px", css_num(st.num(&p.key))),
             Kind::Weight => css_num(st.num(&p.key)),
             Kind::Color => st.color(&p.key).map_or_else(|| "inherit".into(), css_color),
+            // Keep bundled CSS portable and stable; Linux resolves the Feishu monospace default separately.
+            Kind::Font if feishu && p.key == "pre.font" => "Menlo".into(),
             Kind::Font => css_font(st.font(&p.key)),
             Kind::Underline => if st.flag(&p.key) { "underline" } else { "none" }.into(),
             Kind::Strike => if st.flag(&p.key) { "line-through" } else { "none" }.into(),

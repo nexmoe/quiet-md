@@ -2177,7 +2177,29 @@ impl Editor {
             Some(t) => super::table::first_row_text(t),
             None => us.iter().filter(|u| u.text).map(|u| u.id).collect(),
         };
-        hit_test(&self.cache, p, &ids).map(|p| Pos::new(p.block, p.offset.min(self.core.len_of(p.block))))
+        let mut pos = hit_test(&self.cache, p, &ids)?;
+        // In a tall row, the nearest text can belong to a different cell.
+        // Resolve the clicked grid slot first so a click starts in that cell.
+        if let Some((table, _, _)) = self.core.cell_of(pos.block)
+            && let Some((r, c)) = self.slot_at(table, if pinned == Some(table) {
+                self.tables.geo.borrow().get(&(table, false, 0)).map(|b| point(p.x, b.center().y)).unwrap_or(p)
+            } else { p }, false)
+            && let Some(t) = self.core.table(table)
+        {
+            let (r, c) = t.origin(if pinned == Some(table) { 0 } else { r }, c);
+            let cell_ids: Vec<_> = ids.iter().copied().filter(|id| self.core.cell_of(*id) == Some((table, r, c))).collect();
+            if let Some(cell_pos) = hit_test(&self.cache, p, &cell_ids) {
+                let last = cell_ids.iter().rev().find(|id| self.cache.borrow().contains_key(id)).copied();
+                pos = if let Some(id) = last
+                    && self.cache.borrow().get(&id).is_some_and(|l| p.y > l.bounds.bottom())
+                {
+                    Pos::new(id, self.core.len_of(id))
+                } else {
+                    cell_pos
+                };
+            }
+        }
+        Some(Pos::new(pos.block, pos.offset.min(self.core.len_of(pos.block))))
     }
 
     pub fn on_mouse_down(&mut self, ev: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {

@@ -22,7 +22,7 @@ const WINDOWS_TEXT: &[(&str, &str)] = &[
     ("Copy the complete Quiet.md folder into Documents on the new Mac.", "Copy the complete Quiet.md folder into Documents on the new computer."),
     ("Press a new combination containing Command, Control or Option.", "Press a new combination containing Ctrl or Alt."),
     // The system-wide quick-note shortcut exists on macOS only.
-    ("<p>A global shortcut can open a small note window while you are using another app. Write the thought down, then close the window; it is saved with your documents.</p><ul><li>Enable the global quick-note shortcut in Settings › Shortcuts.</li><li>The default <code>⌘ Space</code> commonly conflicts with Spotlight. Choose another combination, such as <code>⌥ ⇧ Space</code>, if needed. Registration failures are shown in settings.</li>",
+    ("<p>A global shortcut can open a small note window while you are using another app. Write the thought down, then close the window; it is saved with your documents.</p><ul><li>Enable the global quick-note shortcut in Settings › Shortcuts.</li><li>The default is <code>⌥ Space</code>. If another app already uses it, choose another combination, such as <code>⌥ ⇧ Space</code>. Registration failures are shown in settings.</li>",
      "<p>A note window is a small window of its own for writing a thought down. Close it when you are done; the note is saved with your documents.</p><ul>"),
 ];
 

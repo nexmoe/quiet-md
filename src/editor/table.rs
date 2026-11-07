@@ -92,7 +92,7 @@ impl Editor {
 
     /// The grid slot under `p`: `clamp` maps points outside the table to the
     /// nearest edge slot instead of None.
-    fn slot_at(&self, table: BlockId, p: Point<Pixels>, clamp: bool) -> Option<(usize, usize)> {
+    pub(super) fn slot_at(&self, table: BlockId, p: Point<Pixels>, clamp: bool) -> Option<(usize, usize)> {
         let geo = self.tables.geo.borrow();
         let find = |cols: bool, v: Pixels| -> Option<usize> {
             let span = |b: &Bounds<Pixels>| if cols { (b.left(), b.right()) } else { (b.top(), b.bottom()) };
@@ -301,7 +301,11 @@ impl Editor {
         let Some(d) = self.tables.drag.take() else { return };
         self.tables.scrolled = None;
         match d {
-            Drag::Resize { table, col, live, .. } if self.core.table_set_width(table, col, live) => self.changed(window, cx),
+            Drag::Resize { table, col, live, .. } if self.core.table_set_width(table, col, live) => {
+                self.changed(window, cx);
+                // Resizing leaves the caret where it was, possibly off screen.
+                self.autoscroll = false;
+            }
             Drag::Move { started: true, drop, .. } => {
                 self.toolbar_hidden = false;
                 if let Some(d) = drop
@@ -472,7 +476,7 @@ impl Element for Sticky {
 }
 
 impl R<'_> {
-    pub(super) fn table(&self, b: &Block, t: &Table, cx: &mut Context<Editor>) -> AnyElement {
+    pub(super) fn table(&self, b: &Block, t: &Table, root: bool, cx: &mut Context<Editor>) -> AnyElement {
         let ed = self.ed;
         let id = b.id;
         let env = Env { depth: 0, cell: true, color: None, in_callout: false, root: false, column: false, quote: false, width: 0. };
@@ -758,24 +762,58 @@ impl R<'_> {
 
         // The scroller's padding leaves room for the bars and pins (its clip
         // would cut them off); negative margins keep the block's bounds on
-        // the table itself.
+        // the table itself. A page-level table may also use the side margins
+        // (Feishu): it starts at the text column, runs on to the right one,
+        // and scrolling sideways slides it over the left one.
+        // Each reach also holds a pin: the row-insert one (L−25.5) needs 26
+        // on the left, the last column's insert one 12 on the right. With
+        // more to bleed into, the clip sits on the page margin.
+        let (bl, br) = if root { ed.bleed() } else { (0., 0.) };
+        let (reach, reach_r) = (bl.max(26.), br.max(12.));
+        // Where the cells are drawn this frame (scroll included): a side the
+        // clip cuts gets a closing line and a shade inward, as in Feishu
+        // (measured there: a border-coloured line, then black 5% → 0 over 10px).
+        let cells_at = Rc::new(Cell::new(None::<Bounds<Pixels>>));
+        let c = cells_at.clone();
+        grid = grid.child(canvas(move |b, _, _| c.set(Some(b)), |_, _, _, _| {}).absolute().left(px(BAR)).top(px(BAR)).right_0().bottom_0());
+        let edges = canvas(|_, _, _| (), move |b, _, window, _| {
+            let Some(t) = cells_at.get() else { return };
+            let (top, bottom) = (t.top().max(b.top()), t.bottom().min(b.bottom()));
+            if bottom <= top { return }
+            let h = bottom - top;
+            let shade = |deg| linear_gradient(deg, linear_color_stop(theme::rgbaf(0, 0, 0, 0.05), 0.), linear_color_stop(theme::rgbaf(0, 0, 0, 0.), 1.));
+            if t.left() < b.left() - px(0.5) {
+                window.paint_quad(fill(Bounds::new(point(b.left() + px(1.), top), size(px(10.), h)), shade(90.)));
+                window.paint_quad(fill(Bounds::new(point(b.left(), top), size(px(1.), h)), Theme::table_line()));
+            }
+            if t.right() > b.right() + px(0.5) {
+                window.paint_quad(fill(Bounds::new(point(b.right() - px(11.), top), size(px(10.), h)), shade(270.)));
+                window.paint_quad(fill(Bounds::new(point(b.right() - px(1.), top), size(px(1.), h)), Theme::table_line()));
+            }
+        });
         div()
             .flex()
             .child(
                 div()
-                    .id(("table", id.0))
+                    .relative()
                     .flex_1()
                     .min_w_0()
-                    .ml(px(-26.))
+                    .ml(px(-reach))
                     .mt(px(-26.))
-                    .pl(px(16.))
-                    .pt(px(16.))
-                    .mr(px(-12.))
-                    .pr(px(12.))
+                    .mr(px(-reach_r))
                     .mb(px(-12.))
-                    .pb(px(12.))
-                    .overflow_x_scroll()
-                    .child(grid),
+                    .child(
+                        div()
+                            .id(("table", id.0))
+                            .w_full()
+                            .pl(px(reach - BAR))
+                            .pt(px(16.))
+                            .pr(px(reach_r - br))
+                            .pb(px(12.))
+                            .overflow_x_scroll()
+                            .child(grid),
+                    )
+                    .child(edges.absolute().top_0().left_0().size_full()),
             )
             .into_any_element()
     }

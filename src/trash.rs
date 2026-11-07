@@ -318,7 +318,7 @@ impl Workspace {
             Confirm::Refs { show: true, .. } => (crate::settings::text("是否显示引用列表？").to_string(), crate::settings::text("选择显示后，协作者可再次查看本文的引用列表。").to_string(), crate::settings::text("显示"), false),
             Confirm::SaveFailed => (
                 crate::settings::text("文档保存失败").to_string(),
-                crate::localized_format!("{}。可以重试，或先取消并通过右上角“...”→“下载为”导出一份副本；放弃修改将丢失本次未保存的内容。", "{}. Retry, or cancel and export a copy using More → Download as. Discarding changes will lose your unsaved work.", self.save_error()),
+                crate::localized_format!("{}。可以重试或另存副本；重新载入将放弃未保存的修改并载入磁盘内容。", "{}. Retry or save a copy. Reload discards unsaved changes and loads the document from disk.", self.save_error()),
                 crate::settings::text("重试"),
                 false,
             ),
@@ -330,7 +330,7 @@ impl Workspace {
         let ok = primary_button("confirm-ok", action);
         let ok = if danger { ok.bg(Theme::danger()).hover(|s| s.bg(theme::c(craft::R600))).active(|s| s.bg(theme::c(craft::R700))) } else { ok };
         let dialog = dialog("confirm-dialog")
-            .w(px(400.))
+            .w(px(if matches!(c, Confirm::SaveFailed) { 520. } else { 400. }))
             .px(px(24.))
             .pt(px(20.))
             .pb(px(24.))
@@ -366,7 +366,10 @@ impl Workspace {
                         cx.notify();
                     })))
                     .when(matches!(c, Confirm::SaveFailed), |d| {
-                        d.child(secondary_button("confirm-discard", crate::settings::text("放弃修改")).text_color(Theme::danger()).on_click(cx.listener(|w, _, window, cx| {
+                        d.child(secondary_button("confirm-save-copy", crate::settings::tr("另存副本", "Save a copy")).on_click(cx.listener(|w, _, window, cx| {
+                            w.save_failed_copy(window, cx);
+                        })))
+                        .child(secondary_button("confirm-discard", crate::settings::tr("重新载入", "Reload")).text_color(Theme::danger()).on_click(cx.listener(|w, _, window, cx| {
                             w.confirm = None;
                             w.resolve_save_failed(false, window, cx);
                         })))

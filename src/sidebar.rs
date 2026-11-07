@@ -110,8 +110,7 @@ impl Workspace {
             .pl(px(theme::TRAFFIC_LIGHTS_W))
             .pr(px(12.))
             .title_bar()
-            .when(cfg!(target_os = "windows"), |d| d.child(self.header_navigation(cx)))
-            .when(!cfg!(target_os = "windows"), |d| d.child(
+            .child(
                 div()
                     .id("collapse-sidebar")
                     .no_drag()
@@ -130,7 +129,7 @@ impl Workspace {
                         w.sidebar_open = false;
                         cx.notify();
                     })),
-            ))
+            )
             .child(div().flex_1())
             .children(crate::settings::update_pill(cx));
 

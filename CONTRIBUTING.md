@@ -1,94 +1,105 @@
-# 参与开发
+# Contributing
 
-代码风格和提交约定见 [AGENTS.md](AGENTS.md)（和 CLAUDE.md 内容相同），动手前先读 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+Code style and commit conventions are in [AGENTS.md](AGENTS.md) (the same as CLAUDE.md). Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before you start.
 
-## 从源码构建
+## Building from source
 
-macOS 需要 Xcode Command Line Tools；Windows 需要 Visual Studio 2022 C++ Build Tools 和 Windows SDK。Rust 版本见 `rust-toolchain.toml`，rustup 会自动选择。
+macOS needs the Xcode Command Line Tools; Windows needs the Visual Studio 2022 C++ Build Tools and the Windows SDK. The Rust version is pinned in `rust-toolchain.toml`, and rustup picks it up automatically.
 
 ```sh
 cargo build --release --locked
-./target/release/quiet_md                          # 默认用 ~/Documents/Quiet.md
-QUIET_MD_HOME=/tmp/lib ./target/release/quiet_md   # 换一个文档库
+./target/release/quiet_md                          # uses ~/Documents/Quiet.md
+QUIET_MD_HOME=/tmp/lib ./target/release/quiet_md   # uses another library
 ```
 
-开发时请用 `QUIET_MD_HOME` 指向临时目录，别拿自己的真实文档库测试。
+While developing, point `QUIET_MD_HOME` at a scratch directory; don't test against your real library.
 
-仓库是 Cargo workspace：`crates/core` 是不依赖 GPUI 的文档引擎（`fdl_core`），根目录是应用本体。GPUI 和 taffy 用的是 `vendor/` 里的本地补丁版本，改动见 [vendor/PATCHES.md](vendor/PATCHES.md)。`target/debug` 会长到十几 GB，日常只用 release 时可以 `cargo clean --profile dev` 清掉。
+The repository is a Cargo workspace: `crates/core` is the document engine (`fdl_core`), which does not depend on GPUI, and the root crate is the app. GPUI, taffy and xattr are locally patched copies in `vendor/`; the changes are listed in [vendor/PATCHES.md](vendor/PATCHES.md). `target/debug` can grow past 10 GB; if you only build release, `cargo clean --profile dev` clears it.
 
-## 测试
+## Testing
 
 ```sh
-scripts/check.sh                                        # 测试 + clippy 零警告，提交前跑
-cargo test --release -p fdl_core                        # 只测文档引擎，不编 GPUI
-FDL_FUZZ_SEEDS=2000 cargo test --release random_edits   # 更多随机编辑，查编辑内核
+scripts/check.sh                                        # tests + clippy with zero warnings; run before committing
+cargo test --release -p fdl_core                        # the document engine only, without building GPUI
+FDL_FUZZ_SEEDS=2000 cargo test --release random_edits   # more random edits, for the editing core
 ```
 
-- 编辑内核有一个随机测试：从一篇包含所有块类型的文档出发，随机做选区、输入、结构、样式、表格和撤销，每一步检查模型不变量，每 25 步存盘再读回。
-- 文档格式有回归测试：`crates/core/tests/fixtures/all-blocks.xml` 读入再写出必须逐字节不变。
-- 界面截图和自动化脚本见 [tools/harness/README.md](tools/harness/README.md)。
+- The editing core has a random test: starting from a document with every block type, it makes random selections, typing, structural, style, table and undo edits, checks the model's invariants after each step, and saves and reloads every 25 steps.
+- The document format has a regression test: `crates/core/tests/fixtures/all-blocks.xml` must read and write back byte for byte.
+- UI screenshots and scripted runs are covered in [tools/harness/README.md](tools/harness/README.md).
 
-想每次提交自动检查：`git config core.hooksPath scripts/hooks`。
+To run the checks on every commit: `git config core.hooksPath scripts/hooks`.
 
-## 文档
+## Documentation
 
-| 文档 | 内容 |
+| Document | Contents |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 分层、编辑流程、不变量、撤销、渲染、模块地图 |
-| [docs/FORMAT.md](docs/FORMAT.md) | 文档库目录、索引恢复、DocxXML 读写规则和本地扩展 |
-| [docs/THEMES.md](docs/THEMES.md) | 文档主题的 CSS 写法：选择器、属性、命名颜色 |
-| [AGENTS.md](AGENTS.md) | 代码风格、提交前检查、测试约定 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, the editing flow, invariants, undo, rendering, the module map |
+| [docs/FORMAT.md](docs/FORMAT.md) | Library layout, index recovery, DocxXML read/write rules and local extensions |
+| [docs/THEMES.md](docs/THEMES.md) | Writing document themes in CSS: selectors, properties, named colors |
+| [AGENTS.md](AGENTS.md) | Code style, pre-commit checks, testing conventions |
 
-## 构建分发包
+Most of these, AGENTS.md included, are written in Chinese for now.
 
-发布前需完成 `scripts/check.sh`，并确认对应提交的 CI 通过；打包后验证签名、公证（macOS）和下载文件的 SHA-256。Windows 构建 CI 不替代安装、卸载及真实编辑验收。
+## Building release packages
 
-macOS 最低系统声明为 13，尚未完成该版本实机验证。Intel Mac 暂无公开安装包。
+Before a release, `scripts/check.sh` must pass and CI must be green on that commit. After packaging, verify the signatures, notarization (macOS) and the SHA-256 of the downloads. The Windows CI build does not replace installing, uninstalling and editing on a real machine.
+
+The declared macOS minimum is 13, not yet verified on real hardware. There is no public package for Intel Macs yet.
 
 ### macOS
 
-`scripts/release.sh` 在本机架构上构建，生成应用图标，使用 Developer ID Application 证书签名，提交 Apple 公证，装订票据并执行 Gatekeeper 校验，最后输出 ZIP 和 SHA-256。它不会上传 GitHub，也不会启动应用。
+`scripts/release.sh` builds for the local architecture, generates the app icon, signs with a Developer ID Application certificate, submits for Apple notarization, staples the ticket and runs a Gatekeeper check, then writes a ZIP and its SHA-256. It does not upload to GitHub or launch the app.
 
-先在登录钥匙串中安装包含私钥的签名证书，并配置 notarytool 钥匙串 profile，再运行：
+Install the signing certificate, with its private key, in the login keychain and set up a notarytool keychain profile, then run:
 
 ```sh
 SIGNING_IDENTITY="Developer ID Application: …" NOTARY_PROFILE="quiet-md" scripts/release.sh
 ```
 
-脚本遇到签名或公证失败会停止，失败目录里的中间产物不能作为正式版本分发。
+The script stops if signing or notarization fails; whatever is left in the failed run's directory must not be shipped.
 
 ### Windows
 
-使用 Inno Setup 7。在 Visual Studio x64 开发者 PowerShell 中运行：
+Uses Inno Setup 7. In a Visual Studio x64 Developer PowerShell:
 
 ```powershell
-# 本地验收用的未签名安装包，不会上传或发布
+# An unsigned installer for local testing; nothing is uploaded or published
 .\scripts\package-windows.ps1 -Iscc 'C:\path\to\ISCC.exe'
 
-# 证书签发并通过硬件令牌或云签名客户端连接后，按指纹选择当前用户的证书
+# Once the certificate is issued and connected through a hardware token or a cloud signing client,
+# pick the current user's certificate by thumbprint
 .\scripts\package-windows.ps1 -Iscc 'C:\path\to\ISCC.exe' `
   -CertificateThumbprint '<40-character certificate thumbprint>' `
   -TimestampUrl 'http://time.certum.pl'
 ```
 
-签名使用 Windows SDK 的 `signtool.exe`，可用 `-SignTool` 指定路径。时间戳地址应使用证书机构提供的 RFC 3161 服务，示例为 Certum。脚本分别对程序、安装器和卸载器签名，检查发布者、可信签名和时间戳，失败即停止。最终安装包和 SHA-256 输出到 `dist/windows/signed/` 或 `dist/windows/unsigned/`，中间目录不用于发布。
+Signing uses `signtool.exe` from the Windows SDK; `-SignTool` sets its path. The timestamp URL should be the certificate authority's RFC 3161 service (Certum in the example). The script signs the app, the installer and the uninstaller separately, checks the publisher, the trusted signature and the timestamp, and stops on any failure. The final installer and its SHA-256 go to `dist/windows/signed/` or `dist/windows/unsigned/`; the intermediate directories are not for release.
 
-安装器支持选择位置和可选的桌面快捷方式，默认只安装到当前用户的应用目录。卸载不删除文档。Windows 的文档位置是系统 Documents 目录下的 `Quiet.md`。
+The installer lets you choose the location and an optional desktop shortcut, and by default installs for the current user only. Uninstalling keeps your documents. On Windows, documents live in `Quiet.md` inside the system Documents folder.
 
-无论哪个平台，凭据、证书私钥和证书文件都不要提交到仓库。
+On every platform, never commit credentials, private keys or certificate files.
 
-### 上传和自动更新
+### Uploads and in-app updates
 
-`scripts/publish-downloads.sh <包>…` 把包上传到 `download.quiet.md` 的 `v<版本>/` 和 `latest/`，用 minisign 签名，最后写 `latest/update-<平台>.json`（`macos-arm64`、`windows-x64`）。应用读的就是这份清单：启动 10 秒后和之后每 12 小时检查一次，窗口回到前台时如果距上次检查超过一小时也会再查（设置 › 通用 可关），菜单「检查更新…」立即检查；下载要用户点，校验 minisign 签名（trusted comment 必须是包的文件名），macOS 还要求新包的签名团队和当前应用一致，然后退出、换包、重新打开。实现见 `src/update.rs`。
+`scripts/publish-downloads.sh <package>…` uploads packages to `v<version>/` and `latest/` on `download.quiet.md`, signs them with minisign, and finally writes `latest/update-<platform>.json` (`macos-arm64`, `windows-x64`). That manifest is what the app reads. It checks 10 seconds after launch and every 12 hours after that, and again when a window comes to the front more than an hour after the last check (this can be turned off in Settings › General); **Check for Updates…** in the menu checks right away. The download starts only when the user clicks. The app verifies the minisign signature (its trusted comment must be the package's file name); on macOS the new package must also be signed by the same team as the running app. It then quits, swaps the package and reopens. See `src/update.rs`.
 
-更新签名密钥只生成一次（`brew install minisign`），私钥放在仓库外，公钥提交：
+Generate the update signing key once (`brew install minisign`), keep the private key outside the repository and commit the public key:
 
 ```sh
 minisign -G -f -p packaging/update-key.pub -s ~/.minisign/quiet-md.key
 ```
 
-脚本会用 `packaging/update-key.pub` 校验刚签的包，公钥和私钥对不上就停止。私钥丢了只能换公钥，已安装的旧版本就收不到之后的更新了，请备份。
+The script verifies each freshly signed package against `packaging/update-key.pub` and stops if the keys don't match. A lost private key can only be replaced together with the public key, and installed copies of older versions then stop receiving updates, so keep a backup.
 
-本地试更新流程：用 `QUIET_MD_UPDATE_URL=http://127.0.0.1:<端口>` 指向一个放着清单和包的目录，再用 `QUIET_MD_UPDATE_PUBKEY=<测试公钥>` 编译；设了这个变量时，未签名的构建也会检查更新。
+To try the update flow locally, point `QUIET_MD_UPDATE_URL=http://127.0.0.1:<port>` at a directory holding a manifest and packages, and build with `QUIET_MD_UPDATE_PUBKEY=<test public key>`; with that variable set, unsigned builds check for updates too.
 
-发布新版本时，两个 `Cargo.toml` 的版本号一起更新，并在 `src/changelog.rs` 写下这个版本的更新要点：老用户更新后，侧栏底部会显示一次。
+For a new version, bump the version in both `Cargo.toml` files together, and write the version's highlights in `src/changelog.rs`: after updating, existing users see them once at the bottom of the sidebar.
+
+### Linux (experimental)
+
+Install Rust through rustup, then run `scripts/linux-deps.sh` on Ubuntu/Debian or Arch-based systems. Run `scripts/preview-linux.sh` for an isolated temporary library, or set `QUIET_MD_HOME` to reuse a test library. `scripts/package-linux.sh` produces a tarball and SHA-256 in `dist/linux`; it includes a desktop entry and a 512×512 icon generated with ImageMagick. The binary is dynamically linked; build on the oldest distribution you intend to support and check `runtime-libraries.txt` on the target system.
+
+The Linux build and full checks run on Ubuntu 24.04. Interactive testing has been done on Omarchy 4.5 with Wayland, floating windows and 250% scaling, including Chinese title input. GNOME Wayland, X11 and systems without Noto fonts still need interactive verification; this is not a claim of support for every desktop distribution. Software Vulkan (`vulkan-swrast` on Arch) is useful in VMs or when no hardware Vulkan driver is available. Global quick-note shortcuts and automatic updates are not supported on Linux yet.
+
+Linux support started in [PR #7](https://github.com/s1dashu/quiet-md/pull/7) by [VJ-2303](https://github.com/VJ-2303); maintainer follow-ups add desktop integration and runtime fixes.
