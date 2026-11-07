@@ -192,7 +192,7 @@ fn grid_rows<T>(cells: Vec<(menus::SlashKind, T)>) -> Vec<Vec<T>> {
     let mut rows: Vec<Vec<T>> = vec![];
     for (_, c) in cells {
         match rows.last_mut() {
-            Some(r) if r.len() < 6 => r.push(c),
+            Some(r) if r.len() < menus::GRID_COLS => r.push(c),
             _ => rows.push(vec![c]),
         }
     }
@@ -349,7 +349,7 @@ impl Editor {
         }
         match &self.menu {
             Some(Menu::Block { block, .. }) | Some(Menu::Add { block, .. }) => Some(*block),
-            _ => self.hover.filter(|_| !self.hover_clipped),
+            _ => self.hover.filter(|_| !self.hover_clipped && !self.typing),
         }
     }
 
@@ -1341,6 +1341,11 @@ impl Editor {
         let turn_above = (pos.y - px(8.)).max(px(0.));
         let turn_up = turn_below < px(338.) && turn_above > turn_below;
         let turn_height = if turn_up { turn_above } else { turn_below }.min(px(338.));
+        let more_height = px(2. + 2. * crate::editor_ui::MENU_PAD_Y + 2. * crate::editor_ui::MENU_ROW_H);
+        let more_above = (pos.y - px(10.)).max(px(0.));
+        let more_below = (window.viewport_size().height - pos.y - px(52.)).max(px(0.));
+        // Down unless it doesn't fit there, like the other dropdowns.
+        let more_up = more_below < more_height && more_above > more_below;
         let drop = |m: Menu, x: f32| {
             div()
                 .id("tb-drop")
@@ -1363,8 +1368,6 @@ impl Editor {
         let x_turn = 8.;
         let x_align = x_turn + 44. + 8. + 1. + 8.;
         let x_color = x_align + 44. + 8. + 1. + 8. + 6. * (24. + 8.);
-        // The menu sits 9px left of its button.
-        let x_more = x_color + 44. + 12. + 1. + 12. - 9.;
         let bar = div()
             .h(px(40.))
             .px(px(8.))
@@ -1473,7 +1476,7 @@ impl Editor {
                 Some(drop(Menu::Align, x_align).child(list).into_any_element())
             }
             Some(Menu::Color) => Some(drop(Menu::Color, x_color).child(self.color_panel(None, cx)).into_any_element()),
-            Some(Menu::TbMore) => Some(div().absolute().top(px(44.)).left(px(x_more)).child(self.tb_more_menu(cx)).into_any_element()),
+            Some(Menu::TbMore) => Some(div().absolute().when(more_up, |d| d.bottom(px(44.))).when(!more_up, |d| d.top(px(44.))).right_0().child(self.tb_more_menu(cx)).into_any_element()),
             _ => None,
         };
         let el = popover()

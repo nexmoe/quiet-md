@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Replace the running hand-test build (dist-preview) with target/release. It
-# runs as dist-preview/quiet.md.app (so the menu bar says quiet.md) on the
+# runs as dist-preview/quiet.md.app (so the menu bar says Quiet.md) on the
 # saved preview library, or ~/Documents/Quiet.md. The app initializes the
 # bundled 开始指南 on first launch, just like an installed build.
 # Only this checkout's own binaries are stopped:
@@ -34,8 +34,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>quiet.md</string>
-  <key>CFBundleDisplayName</key><string>quiet.md</string>
+  <key>CFBundleName</key><string>Quiet.md</string>
+  <key>CFBundleDisplayName</key><string>Quiet.md</string>
   <key>CFBundleIdentifier</key><string>local.quietmd.preview</string>
   <key>CFBundleExecutable</key><string>quiet_md</string>
   <key>CFBundleIconFile</key><string>app-icon.icns</string>
@@ -43,7 +43,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <key>NSDocumentsFolderUsageDescription</key><string>quiet.md 把文档库放在「文稿」里的 quiet.md 文件夹。</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>Quiet.md 把文档库放在「文稿」里的 Quiet.md 文件夹。</string>
 </dict></plist>
 PLIST
 codesign --force --sign - "$app" >/dev/null 2>&1 || true

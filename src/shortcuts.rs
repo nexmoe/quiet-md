@@ -7,24 +7,26 @@ pub struct Shortcuts { base: Vec<KeyBinding>, custom: BTreeMap<String, String> }
 impl Global for Shortcuts {}
 fn path() -> std::path::PathBuf { crate::store::Store::root_dir().join("shortcuts.json") }
 /// The system-wide quick note hotkey unless the user picked another.
-pub const GLOBAL_DEFAULT: &str = "cmd-space";
+pub const GLOBAL_DEFAULT: &str = "alt-space";
 pub fn global_key() -> String {
     std::fs::read(path()).ok().and_then(|b| serde_json::from_slice::<BTreeMap<String,String>>(&b).ok()).and_then(|m| m.get("global").cloned()).unwrap_or_else(|| GLOBAL_DEFAULT.into())
 }
 pub fn init(cx: &mut App) {
     let base = cx.key_bindings().borrow().bindings().cloned().collect::<Vec<_>>();
-    #[cfg(target_os = "windows")]
-    let base = base.into_iter().filter_map(windows_binding).collect();
+    #[cfg(not(target_os = "macos"))]
+    let base = base.into_iter().filter_map(pc_binding).collect();
     let custom = std::fs::read(path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     cx.set_global(Shortcuts { base, custom });
     rebuild(cx);
 }
 
-#[cfg(target_os = "windows")]
-fn windows_binding(binding: KeyBinding) -> Option<KeyBinding> {
-    let keys = binding.keystrokes().iter().map(|k| k.unparse().replace("win-", "cmd-")).collect::<Vec<_>>().join(" ");
-    // Cocoa's control-key navigation conflicts with Windows editing shortcuts.
+#[cfg(any(test, not(target_os = "macos")))]
+fn pc_binding(binding: KeyBinding) -> Option<KeyBinding> {
+    let keys = binding.keystrokes().iter().map(|k| k.unparse().replace("win-", "cmd-").replace("super-", "cmd-")).collect::<Vec<_>>().join(" ");
+    // Cocoa's control-key navigation conflicts with PC editing shortcuts.
     if matches!(keys.as_str(), "ctrl-a" | "ctrl-b" | "ctrl-d" | "ctrl-e" | "ctrl-f" | "ctrl-h" | "ctrl-n" | "ctrl-p" | "ctrl-backspace") { return None; }
+    // Ctrl+Backspace deletes a word on PC platforms; do not override it with macOS line deletion.
+    if keys == "cmd-backspace" { return None; }
     let keys = if binding.action().name().ends_with("::InlineCode") { "ctrl-shift-c".to_string() } else { keys.split(' ').map(|key| match key {
         "cmd-left" => "home".into(), "cmd-right" => "end".into(),
         "cmd-shift-left" => "shift-home".into(), "cmd-shift-right" => "shift-end".into(),
@@ -36,20 +38,99 @@ fn windows_binding(binding: KeyBinding) -> Option<KeyBinding> {
     KeyBinding::load(&keys, binding.action().boxed_clone(), binding.predicate(), false, binding.action_input(), &DummyKeyboardMapper).ok()
 }
 
-#[cfg(all(test, target_os = "windows"))]
+#[cfg(test)]
 mod tests {
-    use super::windows_binding;
+    use super::pc_binding;
     use gpui::KeyBinding;
     #[test]
-    fn copy_and_inline_code_keep_distinct_windows_shortcuts() {
+    fn pc_word_deletion_has_no_line_deletion_collision() {
+        use crate::editor::keymap::{DeleteWordBack, DeleteWordForward, DeleteToLineStart, Backspace};
+        for (binding, expected) in [
+            (KeyBinding::new("alt-backspace", DeleteWordBack, Some("Editor")), "ctrl-backspace"),
+            (KeyBinding::new("alt-delete", DeleteWordForward, Some("Editor")), "ctrl-delete"),
+        ] {
+            let mapped = pc_binding(binding).unwrap();
+            assert_eq!(mapped.keystrokes()[0].unparse(), expected);
+        }
+        assert!(pc_binding(KeyBinding::new("cmd-backspace", DeleteToLineStart, Some("Editor"))).is_none());
+        assert!(pc_binding(KeyBinding::new("ctrl-backspace", Backspace, Some("Editor"))).is_none());
+    }
+    #[test]
+    fn copy_and_inline_code_keep_distinct_pc_shortcuts() {
         use crate::editor::keymap::{Copy, InlineCode};
-        let copy = windows_binding(KeyBinding::new("cmd-c", Copy, Some("Editor"))).unwrap();
-        let code = windows_binding(KeyBinding::new("cmd-ctrl-c", InlineCode, Some("Editor"))).unwrap();
+        let copy = pc_binding(KeyBinding::new("cmd-c", Copy, Some("Editor"))).unwrap();
+        let code = pc_binding(KeyBinding::new("cmd-ctrl-c", InlineCode, Some("Editor"))).unwrap();
         assert_eq!(copy.keystrokes().iter().map(|k| k.unparse()).collect::<Vec<_>>(), ["ctrl-c"]);
         assert_eq!(code.keystrokes().iter().map(|k| k.unparse()).collect::<Vec<_>>(), ["ctrl-shift-c"]);
         assert_ne!(copy.keystrokes(), code.keystrokes());
     }
 }
+/// Mac key notation (⌘ ⌥ ⇧ ⌃, "⌘ + Shift + 7") as Windows writes it, the way
+/// `pc_binding` maps the keys: ⌘ is Ctrl, ⌘ ⌃ C (inline code) is
+/// Ctrl+Shift+C, ⌘ with an arrow is Home / End. "⌘ + B" stays spaced
+/// ("Ctrl + B"), "⌘ B" becomes "Ctrl+B". A combination Windows has no twin
+/// for (⌘ ⌃ ⇧ 4, the macOS screenshot) is left as written.
+pub fn windows_keys(s: &str) -> String {
+    const SYMBOLS: [(&str, usize); 4] = [("⌘", 0), ("⌃", 1), ("⌥", 2), ("⇧", 3)];
+    let modifier = |t: &str, first: bool| -> Option<(usize, usize)> {
+        SYMBOLS.iter().find(|(m, _)| t.starts_with(m)).map(|(m, i)| (*i, m.len()))
+            .or_else(|| if first { None } else { [("Control", 1), ("Shift", 3)].iter().find(|(w, _)| t.starts_with(w) && !t[w.len()..].starts_with(|c: char| c.is_ascii_alphanumeric())).map(|(w, i)| (*i, w.len())) })
+    };
+    let mut out = String::new();
+    let mut i = 0;
+    while i < s.len() {
+        let Some(_) = modifier(&s[i..], true) else {
+            let c = s[i..].chars().next().unwrap();
+            out.push(c);
+            i += c.len_utf8();
+            continue;
+        };
+        let (start, mut j, mut held, mut spaced) = (i, i, [false; 4], false);
+        while let Some((m, n)) = modifier(&s[j..], j == start) {
+            held[m] = true;
+            j += n;
+            let rest = &s[j..];
+            let gap = rest.len() - rest.trim_start_matches(' ').len();
+            // "⌘ + B" separates with " + "; in "⌘ +" the plus is the key.
+            if rest[gap..].starts_with("+ ") { spaced = true; j += gap + 1; j += s[j..].len() - s[j..].trim_start_matches(' ').len(); } else { j += gap; }
+        }
+        let rest = &s[j..];
+        let key_len = if rest.starts_with('&') { rest.find(';').map_or(0, |e| e + 1) } else {
+            rest.chars().next().filter(|c| !c.is_whitespace() && *c != '<').map_or(0, |c| c.len_utf8() + rest[c.len_utf8()..].chars().take_while(|c| c.is_ascii_alphanumeric()).map(char::len_utf8).sum::<usize>())
+        };
+        let mut key = rest[..key_len].to_string();
+        let [cmd, mut ctrl, alt, mut shift] = held;
+        if key.is_empty() || cmd && ctrl && !(key.eq_ignore_ascii_case("c") && !alt && !shift) {
+            out.push_str(&s[start..j + key_len]);
+            i = j + key_len;
+            continue;
+        }
+        if cmd && ctrl { shift = true; }
+        else if cmd { match key.as_str() {
+            "←" => key = "Home".into(), "→" => key = "End".into(),
+            "↑" => { key = "Home".into(); ctrl = true; } "↓" => { key = "End".into(); ctrl = true; }
+            _ => ctrl = true,
+        } }
+        let parts: Vec<&str> = [(ctrl, "Ctrl"), (alt, "Alt"), (shift, "Shift")].into_iter().filter(|(on, _)| *on).map(|(_, n)| n).chain(Some(key.as_str())).collect();
+        out.push_str(&parts.join(if spaced { " + " } else { "+" }));
+        i = j + key_len;
+    }
+    out
+}
+
+fn first_group_hint() -> &'static str {
+    if cfg!(not(target_os = "macos")) { tr("第一组请包含 Ctrl 或 Alt", "Start with Ctrl or Alt") } else { tr("第一组请包含 ⌘、⌃ 或 ⌥", "Start with ⌘, ⌃ or ⌥") }
+}
+
+/// A UI label's keys for this platform: `windows_keys` on non-macOS platforms (cached,
+/// labels are `'static`), the text itself elsewhere.
+pub fn keys(s: &'static str) -> &'static str {
+    if !cfg!(not(target_os = "macos")) { return s }
+    static CACHE: std::sync::Mutex<BTreeMap<&'static str, &'static str>> = std::sync::Mutex::new(BTreeMap::new());
+    let mut cache = CACHE.lock().unwrap();
+    cache.entry(s).or_insert_with(|| Box::leak(windows_keys(s).into_boxed_str()))
+}
+
 /// The user's keys, for `hint` (which runs where no `App` is at hand).
 static CUSTOM: std::sync::RwLock<BTreeMap<String, String>> = std::sync::RwLock::new(BTreeMap::new());
 static HINTS: std::sync::Mutex<BTreeMap<String, &'static str>> = std::sync::Mutex::new(BTreeMap::new());
@@ -57,13 +138,14 @@ static HINTS: std::sync::Mutex<BTreeMap<String, &'static str>> = std::sync::Mute
 /// The key hint the UI shows for `action`: `default` (its built-in key,
 /// written as the UI writes it) unless the user changed it in 设置.
 pub fn hint(action: &str, default: &'static str) -> &'static str {
-    let Some(key) = CUSTOM.read().unwrap().get(action).cloned() else { return default };
+    let Some(key) = CUSTOM.read().unwrap().get(action).cloned() else { return keys(default) };
     let mut cache = HINTS.lock().unwrap();
     if let Some(h) = cache.get(&key) { return h }
     let text = key.split(' ').map(|stroke| {
         let Ok(k) = Keystroke::parse(stroke) else { return stroke.to_string() };
         let m = k.modifiers;
-        let mut parts: Vec<String> = [(m.platform, "⌘"), (m.alt, "⌥"), (m.shift, "Shift"), (m.control, "Control")].into_iter().filter(|(on, _)| *on).map(|(_, s)| s.to_string()).collect();
+        let names = if cfg!(not(target_os = "macos")) { [(m.control, "Ctrl"), (m.alt, "Alt"), (m.shift, "Shift"), (m.platform, if cfg!(target_os = "windows") { "Win" } else { "Super" })] } else { [(m.platform, "⌘"), (m.alt, "⌥"), (m.shift, "Shift"), (m.control, "Control")] };
+        let mut parts: Vec<String> = names.into_iter().filter(|(on, _)| *on).map(|(_, s)| s.to_string()).collect();
         parts.push(match k.key.as_str() { "space" => "Space".into(), "enter" => "Enter".into(), k if k.chars().count() == 1 => k.to_uppercase(), k => { let mut c = k.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() } });
         parts.join(" + ")
     }).collect::<Vec<_>>().join(", ");
@@ -90,7 +172,7 @@ fn info(name: &str) -> Option<(usize, &'static str, &'static str)> {
         "NewDoc" => (0, "新建文档", "New document"),
         "QuickNew" => (0, "新建笔记窗口", "New note window"),
         "CloseWindow" => (0, "关闭窗口", "Close window"),
-        "HideApp" => (0, "隐藏 quiet.md", "Hide quiet.md"),
+        "HideApp" => (0, "隐藏 Quiet.md", "Hide Quiet.md"),
         "Minimize" => (0, "最小化窗口", "Minimize window"),
         "ToggleFullScreen" => (0, "进入 / 退出全屏", "Enter / exit full screen"),
         "OpenSettings" => (0, "打开设置", "Open Settings"),
@@ -148,7 +230,7 @@ fn info(name: &str) -> Option<(usize, &'static str, &'static str)> {
 pub fn label(name: &str) -> Option<&'static str> { info(name).map(|(_, zh, en)| if english() { en } else { zh }) }
 fn default_key(s: &Shortcuts, id: &str) -> String {
     if id == "global" { return GLOBAL_DEFAULT.into(); }
-    if id.ends_with("::NewDoc") { return if cfg!(target_os = "windows") { "ctrl-n" } else { "cmd-n" }.into(); }
+    if id.ends_with("::NewDoc") { return if cfg!(not(target_os = "macos")) { "ctrl-n" } else { "cmd-n" }.into(); }
     s.base.iter().find(|b| b.action().name() == id).map(|b| b.keystrokes().iter().map(|k| k.unparse()).collect::<Vec<_>>().join(" ")).unwrap_or_default()
 }
 /// The key an action runs on now.
@@ -176,14 +258,18 @@ pub fn pretty(key: &str) -> String {
     key.split(' ').map(|stroke| {
         let Ok(ks) = Keystroke::parse(stroke) else { return stroke.to_string() };
         let m = ks.modifiers;
-        let mut out: Vec<String> = [(m.control, "⌃"), (m.alt, "⌥"), (m.shift, "⇧"), (m.platform, "⌘")].into_iter().filter(|(on, _)| *on).map(|(_, s)| s.to_string()).collect();
+        let win = cfg!(not(target_os = "macos"));
+        let names = if win { [(m.control, "Ctrl"), (m.alt, "Alt"), (m.shift, "Shift"), (m.platform, if cfg!(target_os = "windows") { "Win" } else { "Super" })] } else { [(m.control, "⌃"), (m.alt, "⌥"), (m.shift, "⇧"), (m.platform, "⌘")] };
+        let mut out: Vec<String> = names.into_iter().filter(|(on, _)| *on).map(|(_, s)| s.to_string()).collect();
         out.push(match ks.key.as_str() {
-            "space" => "Space".into(), "enter" => "↩".into(), "backspace" => "⌫".into(), "delete" => "⌦".into(), "tab" => "⇥".into(), "escape" => "Esc".into(),
+            "space" => "Space".into(), "escape" => "Esc".into(),
+            "enter" | "backspace" | "delete" | "tab" if win => { let k = ks.key.as_str(); k[..1].to_uppercase() + &k[1..] }
+            "enter" => "↩".into(), "backspace" => "⌫".into(), "delete" => "⌦".into(), "tab" => "⇥".into(),
             "up" => "↑".into(), "down" => "↓".into(), "left" => "←".into(), "right" => "→".into(),
             k if k.chars().count() == 1 => k.to_uppercase(),
             k => { let mut c = k.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() }
         });
-        out.join(" ")
+        out.join(if win { "+" } else { " " })
     }).collect::<Vec<_>>().join("  →  ")
 }
 fn sequence(key: &str) -> anyhow::Result<Vec<Keystroke>> {
@@ -216,7 +302,7 @@ fn change(id: &str, key: Option<String>, cx: &mut App) -> anyhow::Result<()> {
     if !parsed.is_empty() {
         anyhow::ensure!(parsed.len() <= if id == "global" { 1 } else { 4 }, tr("应用快捷键最多四组，全局快捷键只支持一组", "Use up to four strokes, or one for a global shortcut"));
         let m = parsed[0].modifiers;
-        anyhow::ensure!(m.platform || m.control || m.alt, tr("第一组请包含 ⌘、⌃ 或 ⌥", "Start with ⌘, ⌃ or ⌥"));
+        anyhow::ensure!(m.platform || m.control || m.alt, first_group_hint());
         let global = s.custom.get("global").map(String::as_str).unwrap_or(GLOBAL_DEFAULT);
         if id != "global" {
             anyhow::ensure!(!overlaps(&parsed, &sequence(global)?), tr("与全局快速新建快捷键冲突，请先修改全局快捷键", "Change the global quick note shortcut first"));
@@ -313,7 +399,7 @@ impl Workspace {
         self.shortcut_error = None;
         let m = ev.keystroke.modifiers;
         if self.shortcut_strokes.is_empty() && !(m.platform || m.control || m.alt) {
-            self.shortcut_error = Some((id, tr("第一组请包含 ⌘、⌃ 或 ⌥", "Start with ⌘, ⌃ or ⌥").into()));
+            self.shortcut_error = Some((id, first_group_hint().into()));
         } else if self.shortcut_strokes.len() >= if id == "global" { 1 } else { 4 } {
             self.shortcut_error = Some((id, tr("已达到组合键上限，请保存或按退格修改", "Save or press Backspace to edit the sequence").into()));
         } else { self.shortcut_strokes.push(ev.keystroke.unparse()); }
@@ -410,5 +496,27 @@ impl Workspace {
                         .children(rows.into_iter().enumerate().map(move |(i, r)| div().w_full().flex().flex_col().when(i + 1 < n, |d| d.border_b_1().border_color(crate::ui::list_line())).child(r))))
             }))
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod key_text_tests {
+    use super::windows_keys as w;
+    #[test]
+    fn mac_key_text_reads_as_windows_keys() {
+        assert_eq!(w("<code>⌘ ⌥ 1</code>"), "<code>Ctrl+Alt+1</code>");
+        assert_eq!(w("<code>⌘ +</code> / <code>⌘ -</code>"), "<code>Ctrl++</code> / <code>Ctrl+-</code>");
+        assert_eq!(w("<code>⌘ ⇧ &gt;</code>"), "<code>Ctrl+Shift+&gt;</code>");
+        assert_eq!(w("<code>⌃ ⇧ ↑</code>, <code>⇧ Tab</code>, <code>⌘ Enter</code>"), "<code>Ctrl+Shift+↑</code>, <code>Shift+Tab</code>, <code>Ctrl+Enter</code>");
+        assert_eq!(w("⌘ + Shift + 7"), "Ctrl + Shift + 7");
+        assert_eq!(w("⌘ + Control + C"), "Ctrl + Shift + C");
+        assert_eq!(w("⌘ ⌃ C"), "Ctrl+Shift+C");
+        assert_eq!(w("搜索(⌘ + J)"), "搜索(Ctrl + J)");
+        assert_eq!(w("⌘ + ⌥ + Home"), "Ctrl + Alt + Home");
+        assert_eq!(w("⌘C / ⌘X / ⌘V"), "Ctrl+C / Ctrl+X / Ctrl+V");
+        assert_eq!(w("⌘⇧← / ⌘⇧↓"), "Shift+Home / Ctrl+Shift+End");
+        assert_eq!(w("按 ⌘ N 新建，⌘ ,"), "按 Ctrl+N 新建，Ctrl+,");
+        assert_eq!(w("On macOS, <code>⌘ ⌃ ⇧ 4</code>"), "On macOS, <code>⌘ ⌃ ⇧ 4</code>");
+        assert_eq!(w("Shift + Tab and Control"), "Shift + Tab and Control");
     }
 }

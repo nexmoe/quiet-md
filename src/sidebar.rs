@@ -35,7 +35,7 @@ pub(crate) const SECTION_H: f32 = 34.;
 pub(crate) const SECTION_TOP: f32 = 6.;
 
 /// 批量操作 caps at 50 pages.
-const BATCH_LIMIT: usize = 50;
+pub(crate) const BATCH_LIMIT: usize = 50;
 
 /// The footer row: like 主页 (same pill, glyph and label columns) under
 /// the footer line, so the bottom corner mirrors the top.
@@ -62,17 +62,15 @@ pub(crate) fn footer_slot(row: impl IntoElement) -> Div {
     div().pt(px(6.)).pb(px(10.)).px(px(SB_X)).child(row)
 }
 
-pub(crate) fn footer_line() -> Div { div().flex_none().mx(px(17.)).h(px(1.)).bg(Theme::sidebar_divider()) }
-
 #[derive(Clone, Copy, PartialEq)]
-enum Check {
+pub(crate) enum Check {
     Off,
     Partial,
     On,
 }
 
 /// 14px checkbox; an unchecked box turns blue when `group` is hovered.
-fn checkbox(state: Check, disabled: bool, group: &'static str) -> Div {
+pub(crate) fn checkbox(state: Check, disabled: bool, group: &'static str) -> Div {
     let white = Theme::bg_body();
     div()
         .size(px(14.))
@@ -112,8 +110,7 @@ impl Workspace {
             .pl(px(theme::TRAFFIC_LIGHTS_W))
             .pr(px(12.))
             .title_bar()
-            .when(cfg!(target_os = "windows"), |d| d.child(self.header_navigation(cx)))
-            .when(!cfg!(target_os = "windows"), |d| d.child(
+            .child(
                 div()
                     .id("collapse-sidebar")
                     .no_drag()
@@ -132,7 +129,7 @@ impl Workspace {
                         w.sidebar_open = false;
                         cx.notify();
                     })),
-            ))
+            )
             .child(div().flex_1())
             .children(crate::settings::update_pill(cx));
 
@@ -218,7 +215,6 @@ impl Workspace {
             .flex_none()
             .flex()
             .flex_col()
-            .child(footer_line())
             .when(self.batch.is_none(), |d| {
                 d.child(footer_slot(
                     footer_row("ft-settings", "settings-gear", crate::settings::tr("设置", "Settings"))
@@ -244,6 +240,7 @@ impl Workspace {
             .child(header)
             .child(nav)
             .child(div().id("doc-list").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.list_scroll).child(list))
+            .children(crate::changelog::card(cx.listener(|_, _, _, cx| cx.notify())))
             .child(footer)
             .into_any_element()
     }

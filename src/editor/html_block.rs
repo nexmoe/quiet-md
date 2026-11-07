@@ -64,6 +64,7 @@ pub(super) fn html_in(b: &Block) -> Vec<(BlockId, HtmlBlock)> {
 }
 
 impl Editor {
+    #[cfg(feature = "devtools")]
     pub(crate) fn inspect_html(&self, index: usize, js: &str) {
         let mut ids = vec![]; self.core.doc.for_each_block(|b| { if matches!(b.kind, BlockKind::Html(_)) { ids.push(b.id); } });
         if let Some(id) = ids.get(index) && let Some(slot) = self.html_blocks.slots.borrow().get(id) { slot.preview.inspect(js); }

@@ -266,7 +266,7 @@ fn make_thumb(p: &Path) -> Option<PathBuf> {
 
 /// Opens the file in Quick Look (scripted runs only log it).
 pub fn quick_look(p: &Path) {
-    if std::env::var_os("FDL_SCRIPT").is_some() {
+    if crate::devtools::scripted() {
         eprintln!("quicklook {}", p.display());
         return;
     }

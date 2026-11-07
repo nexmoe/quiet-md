@@ -183,9 +183,9 @@ impl Workspace {
             let Some(path) = path.await else { return };
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("doc").to_string();
             let assets = format!("{stem}.assets");
-            let out = crate::markdown::export(&doc, &crate::markdown::Options { sub_pages: &subs, assets: all.then_some(assets.as_str()) });
+            let out = crate::markdown::export(&doc, &crate::markdown::Options { sub_pages: &subs, assets: all.then_some(assets.as_str()), ..Default::default() });
             let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
-            let mut missing = 0;
+            let mut missing = out.missing;
             let written = std::fs::write(&path, &out.text).and_then(|_| {
                 for (src, rel) in &out.files {
                     let to = dir.join(rel);
@@ -193,7 +193,9 @@ impl Workspace {
                         std::fs::create_dir_all(p)?;
                     }
                     // A missing image only loses itself, but is reported.
-                    if std::fs::copy(src, &to).is_err() {
+                    if crate::store::export_path(&src.to_string_lossy()).ok_or_else(|| anyhow::anyhow!("Asset outside library"))
+                        .and_then(|p| crate::store::read_bounded(&p, crate::store::EXPORT_FILE_LIMIT))
+                        .and_then(|bytes| Ok(std::fs::write(&to, bytes)?)).is_err() {
                         missing += 1;
                     }
                 }
@@ -220,7 +222,7 @@ impl Workspace {
         let subs = self.sub_page_titles(id);
         let name = file_name(&doc);
         let path = save_path(&format!("{name}.pdf"), cx);
-        let view = printing::ns_view_of(window);
+        let view = printing::parent_of(window);
         cx.spawn_in(window, async move |this, cx| {
             let Some(path) = path.await else { return };
             let _ = this.update(cx, |w, cx| w.show_toast_kind(ToastKind::Info, crate::settings::text("正在导出文档"), cx));
@@ -251,7 +253,7 @@ impl Workspace {
         let subs = self.sub_page_titles(id);
         let name = file_name(&doc);
         let html = crate::html::to_html(&doc, &crate::html::Options { sub_pages: &subs });
-        let view = printing::ns_view_of(window);
+        let view = printing::parent_of(window);
         self.show_toast_kind(ToastKind::Info, crate::settings::text("文档打印中"), cx);
         cx.spawn_in(window, async move |this, cx| {
             let res = printing::run(html, name, Job::Print, view, cx).await;
@@ -390,6 +392,37 @@ impl Workspace {
         ))
     }
 }
+
+#[cfg(feature = "devtools")]
+impl Workspace {
+    pub(crate) fn check_export_safety(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::model::*;
+        let root = crate::store::Store::root_dir();
+        assert!(std::env::var_os("FDL_SCRIPT").is_some() && std::env::var_os("QUIET_MD_HOME").is_some());
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        std::fs::write(root.join("assets/report.pdf"), b"attachment-content").unwrap();
+        let outside = root.parent().unwrap().join("outside-private.txt");
+        std::fs::write(&outside, b"PRIVATE-MUST-NOT-EXPORT").unwrap();
+        let file = FileBlock { src_kind: "path".into(), src: "assets/report.pdf".into(), name: "Report".into(), view: FileView::Card };
+        let mut text = RichText::plain("Attachment: ");
+        text.push("\u{fffc}", Marks { inline: Some(crate::docxml::to_inline(InlineKind::File(file))), ..Default::default() });
+        let mut doc = Document { title: RichText::plain("Export safety"), blocks: vec![Block::new(BlockKind::Text, text)], ..Default::default() };
+        let image = crate::docxml::parse(&format!("<img href=\"{}\"/>", outside.display())).unwrap();
+        assert!(image.blocks.iter().any(|b| matches!(b.kind, BlockKind::Image { .. })));
+        doc.blocks.extend(image.blocks);
+        let html = crate::html::to_html(&doc, &crate::html::Options { sub_pages: &[] });
+        assert!(!html.contains("PRIVATE-MUST-NOT-EXPORT"));
+        assert!(!html.contains("UFJJVkFURS1NVVNULU5PVC1FWFBPUlQ="));
+        assert!(!html.contains(&*outside.to_string_lossy()));
+        let id = self.store.create_from(&doc).unwrap();
+        self.entries = self.store.list();
+        self.open(&id, window, cx);
+        self.export_md = Some(ExportMd { id, all: true });
+        self.export_markdown(window, cx);
+        eprintln!("export-safety: HTML rejected outside file; Markdown export dispatched");
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

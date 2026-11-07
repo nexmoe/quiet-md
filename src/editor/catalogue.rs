@@ -186,6 +186,17 @@ impl Editor {
         self.layout.content
     }
 
+    /// How far a wide page-level table may reach past the text column on
+    /// each side: to the page's minimum margin, as in Feishu, but not over
+    /// a pinned catalogue (nor nearer to it than that margin).
+    pub(super) fn bleed(&self) -> (f32, f32) {
+        let l = match self.layout.cat {
+            CatMode::Pinned(u) => self.layout.ml - PAD - u.min(RESPONSE_MAX),
+            _ => self.layout.ml - PAD,
+        };
+        (l.max(0.), (self.layout.mr - PAD).max(0.))
+    }
+
     /// Recomputes the outline and the page margins for this frame.
     pub(super) fn update_catalogue(&mut self) {
         if self.cat_generation != Some(self.core.generation) {
@@ -193,7 +204,7 @@ impl Editor {
             self.cat_entries = Rc::new(entries(&self.core.doc));
         }
         let o = f32::from(self.pane_size().width);
-        self.layout = page_layout(o, self.column_max(), true, self.cat_pinned);
+        self.layout = page_layout(o, self.column_max(), !self.cat_entries.is_empty(), self.cat_pinned);
     }
 
     /// Scroll-spy: the last heading at most 90px below the viewport top. A

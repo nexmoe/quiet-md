@@ -1,6 +1,6 @@
-<title>Welcome to quiet.md</title>
-<p>quiet.md is a quiet place for your notes. No account, no cloud workspace: every document is a file on your Mac. Jot down a thought, or work through something complex with headings, lists, tables, code and images.</p>
-<p>These guides will help you find your way around in about ten minutes. They were written in quiet.md, so every layout you see is something you can make yourself. <b>Feel free to edit them.</b> They are working examples, not a read-only manual.</p>
+<title>Welcome to Quiet.md</title>
+<p>Quiet.md is a quiet place for your notes. No account, no cloud workspace: every document is a file on your Mac. Jot down a thought, or work through something complex with headings, lists, tables, code and images.</p>
+<p>These guides will help you find your way around in about ten minutes. They were written in Quiet.md, so every layout you see is something you can make yourself. <b>Feel free to edit them.</b> They are working examples, not a read-only manual.</p>
 <callout emoji="💡" background-color="light-blue" border-color="blue"><p>The best way to learn is to try things as you read. For a blank space to experiment, open {{doc:practice}}.</p></callout>
 <h1>A look around</h1>
 <img src="assets/guides/home.jpg" caption="Home: your documents at a glance" align="center"/>

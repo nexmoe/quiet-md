@@ -1,13 +1,25 @@
 #![recursion_limit = "512"]
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+pub(crate) const APP_ID: &str = "com.s1dashu.quietmd";
+
 mod app;
 mod shared_store;
 mod quick_note;
 mod assets;
+mod changelog;
 mod guides;
 mod clipboard;
+#[cfg(feature = "devtools")]
 mod devtools;
+/// Without the `devtools` feature (release builds) nothing reads FDL_SCRIPT.
+#[cfg(not(feature = "devtools"))]
+mod devtools {
+    pub static RENDER_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    pub fn scripted() -> bool { false }
+    pub fn start(_: &mut gpui::Window, _: &mut gpui::App) {}
+    pub fn take_pick() -> Option<Vec<std::path::PathBuf>> { None }
+}
 mod docinfo;
 mod docmenu;
 mod editor;
@@ -16,6 +28,7 @@ mod home;
 mod html;
 mod html_preview;
 mod input;
+mod logging;
 mod modes;
 #[cfg(target_os = "macos")]
 mod native_header;
@@ -70,9 +83,11 @@ fn open_main_window(scripted: bool, cx: &mut App) {
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            window_background: WindowBackgroundAppearance::Blurred,
+            window_background: crate::theme::window_background(),
+            app_id: Some(crate::APP_ID.into()),
+            window_decorations: if cfg!(target_os = "linux") { Some(WindowDecorations::Client) } else { None },
             titlebar: Some(TitlebarOptions {
-                title: Some("quiet.md".into()),
+                title: Some("Quiet.md".into()),
                 appears_transparent: cfg!(any(target_os = "macos", target_os = "windows")),
                 traffic_light_position: Some(point(px(20.), px(app::HEADER_H / 2. - 7.))),
             }),
@@ -89,13 +104,17 @@ fn open_main_window(scripted: bool, cx: &mut App) {
 }
 
 fn main() {
-    let scripted = std::env::var_os("FDL_SCRIPT").is_some();
+    logging::init();
+    let scripted = devtools::scripted();
     // No single-instance guard: copies may share a library (builds tested
     // side by side). `Store` rereads an index another copy rewrote before
     // writing its own, and `guides` seeds a new library only once.
-    if !scripted && let Err(err) = guides::initialize(&store::Store::root_dir()) {
-        eprintln!("无法初始化开始指南：{err:#}");
-        return;
+    let root = store::Store::root_dir();
+    logging::write(&format!("library {}", root.display()));
+    // A library that was here before this launch can show 更新日志.
+    let existed = guides::seeded(&root).unwrap_or(false);
+    if !scripted && let Err(err) = guides::initialize(&root) {
+        logging::fatal(&format!("无法初始化文档库 / Could not set up the library at {}", root.display()), &err);
     }
     let app = Application::new().with_assets(assets::Assets);
     // macOS keeps running after ⌘W closes the last window (quick notes stay
@@ -113,8 +132,12 @@ fn main() {
         settings::apply_appearance(&settings::prefs().appearance);
         settings::sync_dark(cx);
         themes::load(&settings::prefs().theme_id(), false, || cx.text_system().all_font_names());
+        changelog::startup(existed);
         shortcuts::init(cx);
-        cx.set_global(shared_store::SharedStore::open().expect("open document library"));
+        match shared_store::SharedStore::open() {
+            Ok(s) => cx.set_global(s),
+            Err(err) => logging::fatal("无法打开文档库 / Could not open the library", &err),
+        }
         let quick_enabled = !scripted;
         if quick_enabled { quick_note::install(cx); }
         app::set_menus(cx);

@@ -42,6 +42,8 @@ pub struct SlashGroup {
     pub keywords: &'static [&'static str],
 }
 
+/// Icons per row in the basic group's icon grid.
+pub const GRID_COLS: usize = 6;
 pub const GROUPS: [SlashGroup; 4] = [
     SlashGroup { title: "基础", keywords: &["基础", "basic", "jichu", "jc"] },
     SlashGroup { title: "常用", keywords: &["常用", "common", "changyong", "cy"] },

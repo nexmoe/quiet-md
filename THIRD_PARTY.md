@@ -1,10 +1,10 @@
 # 第三方组件与素材
 
-quiet.md 本体以 MIT 协议发布（见 [LICENSE](LICENSE)）。下面是随它一起分发的第三方代码和素材。
+Quiet.md 本体以 MIT 协议发布（见 [LICENSE](LICENSE)）。下面是随它一起分发的第三方代码和素材。
 
 ## Rust 依赖
 
-由 `cargo metadata` 生成，共 844 个包。许可逐项列于下表，其中也包含 MPL-2.0；本表记录依赖声明，不替代各组件的许可文本。元数据包含所有目标平台的依赖，并非每个包都会随应用分发；例如 GTK、atk 和 cairo 属于 wry 的 Linux 后端，而 quiet.md 只在 macOS 和 Windows 上构建 wry。
+由 `cargo metadata` 生成，共 846 个包。许可逐项列于下表，其中也包含 MPL-2.0；本表记录依赖声明，不替代各组件的许可文本。元数据包含所有目标平台的依赖，并非每个包都会随应用分发；例如 GTK、atk 和 cairo 属于 wry 的 Linux 后端，而 quiet.md 只在 macOS 和 Windows 上构建 wry。
 
 要重新生成这张表：`scripts/licences.sh`（从 `cargo metadata` 取全部依赖）。
 
@@ -722,8 +722,10 @@ quiet.md 本体以 MIT 协议发布（见 [LICENSE](LICENSE)）。下面是随�
 | web_atoms | 0.2.6 | MIT OR Apache-2.0 |
 | webkit2gtk | 2.0.2 | MIT |
 | webkit2gtk-sys | 2.0.2 | MIT |
+| webview2-com | 0.38.2 | MIT |
 | webview2-com | 0.39.1 | MIT |
 | webview2-com-macros | 0.8.1 | MIT |
+| webview2-com-sys | 0.38.2 | MIT |
 | webview2-com-sys | 0.39.1 | MIT |
 | weezl | 0.1.12 | MIT OR Apache-2.0 |
 | which | 6.0.3 | MIT |
@@ -872,7 +874,7 @@ quiet.md 本体以 MIT 协议发布（见 [LICENSE](LICENSE)）。下面是随�
 
 ## 封面与插画
 
-`assets/covers/`（52 张封面）、`assets/illus/`（3 张空态插画）随本项目以 MIT 分发。
+`assets/covers/`（26 张封面及其缩略图）、`assets/illus/`（3 张空态插画，本项目绘制）随本项目以 MIT 分发。
 
 ## 内置主题的样式数值
 

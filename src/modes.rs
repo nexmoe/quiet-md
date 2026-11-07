@@ -63,7 +63,7 @@ fn rows(list: &[Row]) -> Vec<AnyElement> {
                 .border_color(Theme::line_divider())
                 .child(div().flex_none().mr(px(8.)).child(icon(ic, 16., Theme::text_caption())))
                 .child(div().flex_none().mr(px(16.)).text_size(px(13.)).line_height(px(18.)).child(crate::settings::text(desc)))
-                .child(div().flex_1().min_w_0().flex().justify_end().text_size(px(12.)).line_height(px(18.)).text_color(Theme::text_caption()).child(crate::settings::text(keys)))
+                .child(div().flex_1().min_w_0().flex().justify_end().text_size(px(12.)).line_height(px(18.)).text_color(Theme::text_caption()).child(crate::shortcuts::keys(crate::settings::text(keys))))
                 .into_any_element(),
         })
         .collect()

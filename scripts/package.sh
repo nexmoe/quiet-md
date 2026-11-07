@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Build, sign, notarize and package quiet.md as a .dmg for distribution.
+# Build, sign, notarize and package Quiet.md as a .dmg for distribution.
 #
 #   scripts/package.sh [version]
 #
@@ -48,8 +48,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>quiet.md</string>
-  <key>CFBundleDisplayName</key><string>quiet.md</string>
+  <key>CFBundleName</key><string>Quiet.md</string>
+  <key>CFBundleDisplayName</key><string>Quiet.md</string>
   <key>CFBundleIdentifier</key><string>$bundle_id</string>
   <key>CFBundleExecutable</key><string>quiet_md</string>
   <key>CFBundleIconFile</key><string>app-icon</string>
@@ -58,7 +58,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$version</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <key>NSDocumentsFolderUsageDescription</key><string>quiet.md 把文档库放在「文稿」里的 quiet.md 文件夹。</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>Quiet.md 把文档库放在「文稿」里的 Quiet.md 文件夹。</string>
 </dict></plist>
 PLIST
 
@@ -71,7 +71,7 @@ rm -rf "$out/dmg-root"
 mkdir -p "$out/dmg-root"
 cp -R "$app" "$out/dmg-root/"
 ln -s /Applications "$out/dmg-root/Applications"
-hdiutil create -quiet -volname "quiet.md" -srcfolder "$out/dmg-root" -ov -format UDZO "$dmg"
+hdiutil create -quiet -volname "Quiet.md" -srcfolder "$out/dmg-root" -ov -format UDZO "$dmg"
 rm -rf "$out/dmg-root"
 codesign --force --timestamp --sign "$sign_id" "$dmg"
 

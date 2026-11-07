@@ -1,0 +1,52 @@
+name: Update contributors
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - docs/images/contributors.svg
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-contributors
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.repository == 's1dashu/quiet-md' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - name: Fetch contributors and render avatars
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/update-contributors.py
+      - name: Publish changed avatars to the assets branch
+        run: |
+          cp docs/images/contributors.svg "$RUNNER_TEMP/contributors.svg"
+          git restore docs/images/contributors.svg
+          if git ls-remote --exit-code --heads origin contributors-assets; then
+            git fetch origin contributors-assets
+            git checkout -B contributors-assets FETCH_HEAD
+          else
+            git checkout --orphan contributors-assets
+            git rm -rf .
+          fi
+          mkdir -p docs/images
+          cp "$RUNNER_TEMP/contributors.svg" docs/images/contributors.svg
+          git add docs/images/contributors.svg
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: update contributor avatars'
+          git push origin HEAD:contributors-assets

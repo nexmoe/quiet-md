@@ -1,0 +1,21 @@
+// Daily statistics for Quiet.md into the D1 database quiet-md-stats; see README.md.
+// Deploy from this directory: npx wrangler@4 deploy
+{
+  "name": "quiet-md-stats",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  // 00:30 UTC: yesterday's analytics are complete by then.
+  "triggers": { "crons": ["30 0 * * *"] },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "quiet-md-stats", "database_id": "4b58cbda-8485-4861-8962-593e202803ea", "migrations_dir": "migrations" }
+  ],
+  "vars": {
+    "ZONE_ID": "411c824a5a3ea80fcfd2d5551529366b",
+    "GITHUB_REPO": "s1dashu/quiet-md",
+    // Days of Cloudflare analytics one run may fill in (a missed run catches up next time).
+    "MAX_DAYS": "3"
+  }
+  // Secrets (npx wrangler@4 secret put <NAME>): CF_API_TOKEN, an API token with
+  // Zone › Analytics › Read on quiet.md; GITHUB_TOKEN, optional, for a higher rate limit.
+}

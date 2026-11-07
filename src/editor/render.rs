@@ -434,7 +434,7 @@ impl R<'_> {
             BlockKind::Html(html) => self.html_block(b, html, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
-            BlockKind::Table(t) => self.table(b, t, cx),
+            BlockKind::Table(t) => self.table(b, t, env.root, cx),
             BlockKind::Grid => self.grid(b, env, cx),
             BlockKind::Column { .. } => self.blocks(&b.children, env, cx).into_any_element(),
             BlockKind::Raw { tag, .. } => div()
@@ -1760,7 +1760,7 @@ pub(super) fn block_feishu(&self, b: &Block, siblings: &[Block], idx: usize, env
             BlockKind::Html(html) => self.html_block(b, html, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
-            BlockKind::Table(t) => self.table(b, t, cx),
+            BlockKind::Table(t) => self.table(b, t, env.root, cx),
             BlockKind::Grid => self.grid(b, env, cx),
             BlockKind::Column { .. } => self.blocks(&b.children, env, cx).into_any_element(),
             BlockKind::Raw { tag, .. } => div()
@@ -1879,7 +1879,7 @@ fn text_block_feishu(&self, b: &Block, env: Env, cx: &mut Context<Editor>) -> An
                         .flex()
                         .items_center()
                         .whitespace_nowrap()
-                        .font_family("Helvetica Neue")
+                        .font_family(crate::theme::NUMERAL_FONT)
                         .font_weight(weight)
                         .text_size(px(size))
                         .text_color(Theme::primary())
@@ -1925,7 +1925,7 @@ fn list_item_feishu(&self, b: &Block, siblings: &[Block], idx: usize, env: Env, 
                 .px(px(2.))
                 .mr(px(6.))
                 .whitespace_nowrap()
-                .font_family("Helvetica Neue")
+                .font_family(crate::theme::NUMERAL_FONT)
                 .text_size(px(spec.size))
                 .text_color(Theme::primary())
                 .child(core::ordered_marker(core::ordered_number(siblings, idx), env.depth))

@@ -388,6 +388,23 @@ fn entry_icon(e: &Entry) -> AnyElement {
 }
 
 impl Workspace {
+    /// In 批量管理 a click checks or unchecks; otherwise it opens.
+    fn home_click(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.batch.is_none() { return self.open(id, window, cx) }
+        if !self.toggle_check(id) {
+            self.show_toast_kind(crate::ui::ToastKind::Error, &crate::localized_format!("一次最多选择 {} 项", "Select up to {} items at a time", crate::sidebar::BATCH_LIMIT), cx);
+        }
+        cx.notify();
+    }
+
+    /// The row's / card's checkbox while 批量管理 is on.
+    fn home_check(&self, e: &Entry) -> Option<Div> {
+        use crate::sidebar::{BATCH_LIMIT, Check, checkbox};
+        let sel = self.batch.as_ref()?;
+        let on = sel.contains(&e.id);
+        Some(checkbox(if on { Check::On } else { Check::Off }, !on && sel.len() >= BATCH_LIMIT, "home-card"))
+    }
+
     fn home_entries(&self) -> Vec<Entry> {
         let mut v: Vec<Entry> = match self.home.tab {
             HomeTab::Recent => self.entries.clone(),
@@ -544,6 +561,16 @@ impl Workspace {
                     cx.notify();
                 }))
         };
+        // 批量管理: the sidebar's 批量操作 selection, entered and shown here
+        // too, with a toolbar of its own.
+        let text_btn = |id: &'static str, ic: &'static str, label: &'static str, enabled: bool| {
+            div().id(id).flex_none().h(px(28.)).px(px(10.)).flex().items_center().gap(px(6.)).rounded(px(9.))
+                .text_size(px(13.)).line_height(px(20.))
+                .text_color(if enabled { Theme::text() } else { Theme::text_disabled() })
+                .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(Theme::fill_hover())))
+                .child(icon(ic, 14., if enabled { Theme::text_code() } else { Theme::text_disabled() }))
+                .child(label)
+        };
         let toolbar = div()
             .mt(px(12.))
             .h(px(28.))
@@ -551,10 +578,35 @@ impl Workspace {
             .pl(px(24.))
             .pr(px(24.))
             .flex()
-            .items_center()
+            .items_center();
+        let toolbar = if let Some(sel) = &self.batch {
+            let ids: Vec<String> = self.home_entries().into_iter().take(crate::sidebar::BATCH_LIMIT).map(|e| e.id).collect();
+            let n = sel.len();
+            let all = n > 0 && ids.iter().all(|id| sel.contains(id));
+            use crate::sidebar::{Check, checkbox};
+            toolbar
+                .child(div().id("home-batch-all").flex_none().ml(px(10.)).size(px(14.)).cursor_pointer().group("home-batch-all")
+                    .child(checkbox(if all { Check::On } else if n > 0 { Check::Partial } else { Check::Off }, false, "home-batch-all"))
+                    .tip(crate::settings::text("全选"), None)
+                    .on_click(cx.listener(move |w, _, _, cx| { w.batch = Some(if all { vec![] } else { ids.clone() }); cx.notify(); })))
+                .child(div().ml(px(10.)).text_size(px(13.)).line_height(px(20.)).text_color(Theme::text()).child(crate::localized_format!("已选 {n} 项", "Selected: {n}")))
+                .child(div().flex_1())
+                // The sidebar's 批量操作 actions: 创建副本 | 移动到 | 删除.
+                .child(text_btn("home-batch-copy", "copy", crate::settings::text("创建副本"), n > 0)
+                    .when(n > 0, |d| d.on_click(cx.listener(|w, _, _, cx| w.batch_copy(cx)))))
+                .child(text_btn("home-batch-move", "folder-input", crate::settings::text("移动到"), n > 0).ml(px(4.))
+                    .when(n > 0, |d| d.on_click(cx.listener(|w, _, window, cx| w.batch_move(window, cx)))))
+                .child(text_btn("home-batch-delete", "bin", crate::settings::text("删除"), n > 0).ml(px(4.))
+                    .when(n > 0, |d| d.on_click(cx.listener(|w, _, _, cx| w.ask_batch_delete(cx)))))
+                .child(text_btn("home-batch-exit", "x", crate::settings::text("退出"), true).ml(px(8.))
+                    .tip(crate::settings::text("退出批量操作"), None)
+                    .on_click(cx.listener(|w, _, _, cx| { w.batch = None; w.row_menu = None; cx.notify(); })))
+        } else { toolbar
             .child(tab("home-tab-recent", crate::settings::text("我的文档"), HomeTab::Recent))
             .child(tab("home-tab-star", crate::settings::text("收藏"), HomeTab::Starred))
             .child(div().flex_1())
+            .child(text_btn("home-batch", "batch", crate::settings::text("批量管理"), true).mr(px(8.))
+                .on_click(cx.listener(|w, _, _, cx| { w.batch = Some(vec![]); w.row_menu = None; w.home.sort_menu = false; cx.notify(); })))
             .child(
                 div().id("home-sort").relative().h(px(28.)).px(px(10.)).flex().items_center().gap(px(6.))
                     .rounded(px(9.)).text_size(px(13.)).text_color(Theme::text_caption()).cursor_pointer()
@@ -573,7 +625,7 @@ impl Workspace {
                     .rounded(px(9.))
                     .child(toggle("home-grid", "view-grid", self.home.grid, crate::settings::text("切换为宫格视图"), true))
                     .child(toggle("home-list", "view-list", !self.home.grid, crate::settings::text("切换为列表视图"), false)),
-            );
+            ) };
 
         let entries = self.home_entries();
         let body = if entries.is_empty() && (self.home.grid || self.home.tab == HomeTab::Recent) {
@@ -654,6 +706,7 @@ impl Workspace {
         for (i, e) in entries.iter().enumerate() {
             let (id, id2) = (e.id.clone(), e.id.clone());
             let menu_on = self.row_menu.as_ref().is_some_and(|m| m.id == e.id);
+            let check = self.home_check(e);
             let mut row = div()
                 .id(SharedString::from(format!("home-row-{}", e.id)))
                 .h(px(56.))
@@ -663,20 +716,21 @@ impl Workspace {
                 .cursor_pointer()
                 .hover(row_hover)
                 .when(menu_on, |d| d.bg(Theme::fill_hover()).border_color(transparent_black()).rounded(px(ROW_RADIUS)))
-                .on_click(cx.listener(move |w, _, window, cx| w.open(&id, window, cx)))
-                .on_mouse_down(
+                .on_click(cx.listener(move |w, _, window, cx| w.home_click(&id, window, cx)))
+                .when(check.is_none(), |d| d.on_mouse_down(
                     MouseButton::Right,
                     cx.listener(move |w, ev: &MouseDownEvent, _, cx| {
                         w.row_menu = Some(RowMenu { id: id2.clone(), pos: ev.position, corner: Corner::TopLeft, sub: false, batch: false });
                         cx.notify();
                     }),
-                )
+                ))
                 .child(
                     weight3(title_cell())
                         .pl(px(24.))
                         .pr(px(16.))
                         .flex()
                         .items_center()
+                        .when_some(check, |d, c| d.child(c.mr(px(12.))))
                         .child(entry_icon(e))
                         .child(div().min_w_0().text_size(px(15.)).line_height(px(22.)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(ui_text(display_title(&e.title))))
                         .when(e.meta.pinned, |d| d.child(icon("pin-filled", 14., Theme::pinned()).ml(px(6.)))),
@@ -684,7 +738,7 @@ impl Workspace {
             for c in &cols {
                 row = row.child(col_cell().pl(px(24.)).text_size(px(13.)).text_color(Theme::text_caption()).whitespace_nowrap().overflow_hidden().child(cell_text(e, *c)));
             }
-            row = row.child(div().w(px(60.)).flex_none().flex().justify_end().pr(px(12.)).child(self.home_more(e, format!("home-more-{}", e.id), cx)));
+            row = row.child(div().w(px(60.)).flex_none().flex().justify_end().pr(px(12.)).when(self.batch.is_none(), |d| d.child(self.home_more(e, format!("home-more-{}", e.id), cx))));
             rows = rows.child(row);
         }
         div().flex_1().min_h_0().flex().flex_col().child(header.mx(px(24.)))
@@ -744,6 +798,7 @@ impl Workspace {
             let cover = thumb.cover.as_ref().and_then(|c| crate::store::image_path(&c.src));
             let frame = 4.;
             let menu_on = self.row_menu.as_ref().is_some_and(|m| m.id == e.id);
+            let check = self.home_check(e);
                 div()
                     .id(SharedString::from(format!("home-card-{}", e.id)))
                     .w_full().min_w_0().h(px(card_h)).relative().group("home-card")
@@ -753,22 +808,23 @@ impl Workspace {
                     .cursor_pointer()
                     .hover(|s| s.bg(Theme::fill_hover_strong()))
                     .when(menu_on, |d| d.bg(Theme::fill_hover_strong()))
-                    .on_click(cx.listener(move |w, _, window, cx| w.open(&id, window, cx)))
-                    .on_mouse_down(
+                    .on_click(cx.listener(move |w, _, window, cx| w.home_click(&id, window, cx)))
+                    .when(check.is_none(), |d| d.on_mouse_down(
                         MouseButton::Right,
                         cx.listener(move |w, ev: &MouseDownEvent, _, cx| {
                             w.row_menu = Some(RowMenu { id: id2.clone(), pos: ev.position, corner: Corner::TopLeft, sub: false, batch: false });
                             cx.notify();
                         }),
-                    )
+                    ))
                     .when_some(cover, |d, path| d.child(img(path).absolute().inset_0().size_full().object_fit(ObjectFit::Fill)))
                     .child(crate::ui::continuous_page(20. - frame).size_full().overflow_hidden().child(page.relative()))
                     .child(crate::ui::continuous_corner_mask(20., Theme::bg_body()))
-                    .child(
+                    .when_some(check, |d, c| d.child(div().absolute().top(px(12.)).left(px(12.)).child(c)))
+                    .when(self.batch.is_none(), |d| d.child(
                         div().absolute().top(px(8.)).right(px(8.))
                             .when(!menu_on, |d| d.opacity(0.).group_hover("home-card", |s| s.opacity(1.)))
                             .child(self.home_more(e, format!("home-gmore-{}", e.id), cx).rounded_full().bg(Theme::bg_overlay())),
-                    )
+                    ))
             .into_any_element()
     }
 

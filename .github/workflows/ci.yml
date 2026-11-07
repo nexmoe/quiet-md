@@ -3,6 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+    # Docs-only pushes skip CI. Pull requests always run: main requires
+    # both checks, and a skipped workflow never reports them.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'site/**'
+      - 'tools/promo/**'
   pull_request:
   workflow_dispatch:
 
@@ -16,7 +23,7 @@ concurrency:
 jobs:
   check:
     name: test + clippy
-    # Exercise AppKit and Metal on macOS; Windows compilation runs separately.
+    # Exercise AppKit and Metal on macOS; Windows checks run separately.
     runs-on: macos-15
     timeout-minutes: 45
     env:
@@ -32,6 +39,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           env-vars: MACOSX_DEPLOYMENT_TARGET
 
       - name: Build application
@@ -50,8 +58,26 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build application with Windows SDK
+      - name: Install toolchain
+        run: rustup component add clippy
+
+      - name: Ensure WebView2 Runtime for native HTML test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $roots = @("${env:ProgramFiles(x86)}/Microsoft/EdgeWebView/Application", "$env:ProgramFiles/Microsoft/EdgeWebView/Application", "$env:LOCALAPPDATA/Microsoft/EdgeWebView/Application")
+          if (!($roots | Where-Object { Test-Path $_ })) {
+            $installer = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $installer
+            $signature = Get-AuthenticodeSignature $installer
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'WebView2 installer signature is invalid' }
+            $process = Start-Process $installer -ArgumentList '/silent', '/install' -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "WebView2 installation failed: $($process.ExitCode)" }
+          }
+
+      - name: Build and check with Windows SDK
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -62,3 +88,33 @@ jobs:
           Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
           & cargo build --release --locked
           if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
+          & python scripts/check.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows checks failed' }
+
+  linux-build:
+    name: Linux x64 build + checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libfreetype6-dev libwayland-dev libx11-xcb-dev libvulkan-dev libssl-dev python3 imagemagick fonts-noto-core fonts-noto-cjk
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          cache-on-failure: true
+
+      - name: Build application
+        run: cargo build --release --locked
+
+      - name: Install clippy
+        run: rustup component add clippy
+
+      - name: Tests, bundled guides and clippy
+        run: python3 scripts/check.py
+
+      - name: Verify Linux package
+        run: scripts/package-linux.sh

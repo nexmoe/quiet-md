@@ -3,7 +3,7 @@
 用 `FDL_SCRIPT` 回放一份逐行脚本来操作窗口，并截图。整个过程不碰用户的文档库：每次运行都先把 `lib_dir` 复制一份到 `work_dir/lib`，再用 `QUIET_MD_HOME` 指向这份副本。
 
 ```sh
-cargo build --release
+cargo build --release --features devtools   # 正式构建不带脚本驱动
 python3 tools/harness/run.py tools/harness/examples/scroll.txt            # 默认用 lib_clean，结果在 /tmp/fdl-run
 python3 tools/harness/run.py my.txt /path/to/lib /tmp/my-run              # 自定义文档库和输出目录
 FDL_BIN=/other/quiet_md python3 tools/harness/run.py my.txt
@@ -23,8 +23,9 @@ python3 tools/harness/compare.py tools/harness/examples/menus.txt <旧版二进�
 - 用同一份脚本分别跑两个版本，逐张逐像素比较截图。有差异时输出差异像素数和范围，并把差异图写到 `/tmp/fdl-compare/diff-<名字>.png`。
 - 只移动代码、不改外观的重构（拆模块、换 token、共用组件），应当每张都是 `identical`。
 - `examples/menus.txt` 依次打开「…」菜单和页宽子菜单、编辑模式菜单、斜杠菜单、块菜单、侧栏右键菜单、帮助菜单。
+- `python3 tools/harness/table_resize.py` 在临时文档库中验证调整表格列宽时页面位置不跳动，覆盖屏幕外光标、单元格内光标、无变化拖拽、保存和撤销重做；需要 Pillow。
 - 比较时光标不闪烁（`FDL_NOBLINK`）。脚本开头要先把指针移到空白处，否则真实鼠标的位置会以 hover 的形式出现在截图里。
-- 旧版二进制可以这样编：`git worktree add /tmp/old <提交>`，在那里用 `CARGO_TARGET_DIR=<本仓库>/target cargo build --release`，再把二进制复制出来。
+- 旧版二进制可以这样编：`git worktree add /tmp/old <提交>`，在那里用 `CARGO_TARGET_DIR=<本仓库>/target cargo build --release --features devtools`，再把二进制复制出来。
 
 ## 脚本命令
 
@@ -36,7 +37,7 @@ python3 tools/harness/compare.py tools/harness/examples/menus.txt <旧版二进�
 | `key <按键>` | 发送按键，如 `key cmd-b`、`key escape` |
 | `type <文字>` | 输入文字（行尾空格有效） |
 | `move x y` / `click x y` / `dclick x y` / `rclick x y` / `drag x1 y1 x2 y2` | 鼠标操作（窗口坐标） |
-| `wheel x y dy` | 一次滚轮事件 |
+| `wheel x y dy [dx]` | 一次滚轮事件；可选的 `dx` 是横向分量（模拟触控板），正数露出右边的内容 |
 | `shot <名字>` / `burst <名字> n` | 截图；连拍 n 张，间隔约 8ms |
 | `mark <文字>` / `commit <文字>` | 输入法组合文字 / 提交 |
 | `clip html|text <文件>` | 设置模拟剪贴板的内容，之后的 `key cmd-v` 粘贴它 |

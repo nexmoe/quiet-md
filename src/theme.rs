@@ -2,7 +2,7 @@
 //! The layout departs in one place: a sunken sidebar on the window surface
 //! and a full-bleed white note plane instead of floating panels.
 
-use gpui::{BoxShadow, Hsla, Rgba, point, px, rgb};
+use gpui::{BoxShadow, Hsla, Rgba, WindowBackgroundAppearance, point, px, rgb};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // ---- dark mode
@@ -14,6 +14,29 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // (the accent, coloured text) keep their hue and stay readable. Text
 // highlights keep their light colours instead (`mark`, `on_mark`).
 // `rgbaf` stays literal for shadows, scrims and controls drawn over images.
+
+// ---- window glass
+
+/// Whether windows sit on blurred glass. Windows 10 and 11 21H2 drag acrylic
+/// windows with a lag (GitHub #32): there the window is opaque.
+pub fn glass() -> bool {
+    #[cfg(target_os = "windows")] {
+        static GLASS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *GLASS.get_or_init(|| windows_build().is_some_and(|b| b >= 22621))
+    }
+    #[cfg(target_os = "linux")] { false }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))] { true }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_build() -> Option<u32> {
+    let key = windows_registry::LOCAL_MACHINE.open(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion").ok()?;
+    key.get_string("CurrentBuildNumber").ok()?.trim().parse().ok()
+}
+
+pub fn window_background() -> WindowBackgroundAppearance {
+    if glass() { WindowBackgroundAppearance::Blurred } else { WindowBackgroundAppearance::Opaque }
+}
 
 static DARK: AtomicBool = AtomicBool::new(false);
 thread_local! {
@@ -265,17 +288,28 @@ pub fn shadow_s4_down() -> Vec<BoxShadow> {
     vec![shadow(0.05, 1., 3., 0.), shadow(0.11, 10., 28., 0.)]
 }
 
+/// Cards resting on the sidebar (更新日志): a faint lift, no border.
+pub fn shadow_card() -> Vec<BoxShadow> {
+    vec![shadow(0.04, 1., 2., 0.), shadow(0.06, 4., 14., 0.)]
+}
+
 /// Header buttons and other white pills on a white panel (back / share).
 pub fn shadow_button() -> Vec<BoxShadow> {
     vec![shadow(0.05, 1., 1.5, 0.)]
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub const UI_FONT: &str = ".SystemUIFont";
-/// SF Mono.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub const UI_FONT: &str = "Noto Sans";
+pub const NUMERAL_FONT: &str = if cfg!(any(target_os = "macos", target_os = "windows")) { "Helvetica Neue" } else { UI_FONT };
+/// Platform monospace font.
 #[cfg(target_os = "macos")]
 pub const MONO_FONT: &str = ".AppleSystemUIFontMonospaced";
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub const MONO_FONT: &str = "Consolas";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub const MONO_FONT: &str = "Noto Sans Mono";
 
 pub struct Theme;
 
@@ -343,10 +377,10 @@ impl Theme {
     pub fn danger_cell() -> Hsla { c(craft::R50) }
     pub fn danger() -> Hsla { c(craft::R500) }
 
-    // ---- quiet.md shell
+    // ---- Quiet.md shell
     /// A light gray tint separates the sidebar from the white page while keeping wallpaper colors quiet.
     /// The document pane paints its own opaque white surface.
-    pub fn window() -> Hsla { if crate::native_header::supported() { ca(craft::WINDOW, 0.) } else { ca(craft::WINDOW, 0.84) } }
+    pub fn window() -> Hsla { if crate::native_header::supported() { ca(craft::WINDOW, 0.) } else if crate::theme::glass() { ca(craft::WINDOW, 0.84) } else { ca(craft::WINDOW, 1.) } }
     /// Sidebar row label: text at 85%.
     pub fn sidebar_text() -> Hsla { ca(craft::N900, 0.85) }
     pub fn sidebar_hover() -> Hsla { ca(craft::N1000, 0.045) }
@@ -359,7 +393,6 @@ impl Theme {
     /// SF Symbols sit near secondary label; this is between N700 and N600.
     pub fn icon() -> Hsla { ca(craft::N900, 0.6) }
     /// Line above the sidebar footer (1pt, black 3.5%, #E8E8E9 on the sidebar).
-    pub fn sidebar_divider() -> Hsla { ca(craft::N1000, 0.035) }
     /// Line under the page title.
     /// White pill buttons on the note (back / + / share): hairline.
     pub fn button_border() -> Hsla { ca(craft::N1000, 0.075) }
@@ -481,7 +514,8 @@ pub const SIDEBAR_MAX: f32 = 800.0;
 /// The editor keeps at least this much room when the sidebar is dragged wider.
 pub const SIDEBAR_MIN_CONTENT: f32 = 540.0;
 /// Left inset of the header controls that sit beside the macOS traffic lights.
-pub const TRAFFIC_LIGHTS_W: f32 = if cfg!(target_os = "macos") { 92.0 } else { 16.0 };
+// On PC, 12pt padding + 4pt margin + half the 28pt button aligns with the sidebar icon at 30pt.
+pub const TRAFFIC_LIGHTS_W: f32 = if cfg!(target_os = "macos") { 92.0 } else { 12.0 };
 
 /// (font size, line height, margin top, margin bottom) per block.
 pub struct BlockMetrics {
@@ -518,7 +552,7 @@ pub fn heading_weight(level: u8) -> gpui::FontWeight {
     if level <= 2 { gpui::FontWeight::BOLD } else { gpui::FontWeight::SEMIBOLD }
 }
 
-/// Page title: quiet.md uses 34 / 55.25 Bold, larger than the 21pt
+/// Page title: Quiet.md uses 34 / 55.25 Bold, larger than the 21pt
 /// reference `.pageTitle`, to match preview typography; the larger title is
 /// an intentional deviation, not a measurement.
 pub const TITLE: BlockMetrics = BlockMetrics { size: 34.0, line_height: 55.25, mt: 0.0, mb: 0.0 };

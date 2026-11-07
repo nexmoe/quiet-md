@@ -1,7 +1,7 @@
 <title>Writing: text, headings and paragraphs</title>
 <p>Good structure makes a document easier to write and easier to read. This guide covers headings, text styles and paragraph layout, with keyboard shortcuts for the things you will do most often.</p>
 <h1>Headings give your writing structure</h1>
-<p>quiet.md supports nine heading levels. Two or three are usually enough; deeper levels are useful for long specifications and detailed outlines.</p>
+<p>Quiet.md supports nine heading levels. Two or three are usually enough; deeper levels are useful for long specifications and detailed outlines.</p>
 <h2>Heading levels</h2><p>Here are a few examples:</p>
 <h3>A section within a chapter</h3><h4>A smaller point</h4><h5>One more level of detail</h5>
 <p>Type one to nine <code>#</code> characters followed by a space. You can also use <code>⌘ ⌥ 1</code> through <code>⌘ ⌥ 9</code>. The slash menu lists the first five levels; <code>⌘ ⌥ 0</code> turns a heading back into body text.</p>
@@ -44,5 +44,5 @@
 <table><colgroup><col width="310"/><col width="380"/></colgroup><tbody>
 <tr><td><p><code>#</code> through <code>#########</code></p></td><td><p>Heading levels 1–9</p></td></tr><tr><td><p><code>-</code>, <code>*</code> or <code>+</code></p></td><td><p>Bulleted list</p></td></tr><tr><td><p><code>1.</code></p></td><td><p>Numbered list; <code>5.</code> starts at five</p></td></tr><tr><td><p><code>[]</code></p></td><td><p>Task</p></td></tr><tr><td><p><code>&gt;</code></p></td><td><p>Quote</p></td></tr><tr><td><p><code>```</code> or <code>```python</code></p></td><td><p>Code block; Space or Enter completes it</p></td></tr><tr><td><p><code>---</code></p></td><td><p>Divider, as soon as you type the third dash</p></td></tr><tr><td><p><code>$E=mc^2$</code></p></td><td><p>Inline equation <latex>E=mc^2</latex></p></td></tr>
 </tbody></table>
-<h1>Undo, copy and paste</h1><ul><li><code>⌘ Z</code> undoes an edit; <code>⌘ ⇧ Z</code> or <code>⌘ Y</code> redoes it. Continuous typing is grouped into a single undo step.</li><li>Copying within quiet.md preserves styles, colors, tables and images.</li><li>Pasting from a web page or Feishu preserves supported document structure. Markdown text is converted on paste.</li><li><code>⌘ ⇧ V</code> pastes plain text.</li><li>The bottom-right counter shows the word count of selected text.</li></ul>
+<h1>Undo, copy and paste</h1><ul><li><code>⌘ Z</code> undoes an edit; <code>⌘ ⇧ Z</code> or <code>⌘ Y</code> redoes it. Continuous typing is grouped into a single undo step.</li><li>Copying within Quiet.md preserves styles, colors, tables and images.</li><li>Pasting from a web page or Feishu preserves supported document structure. Markdown text is converted on paste.</li><li><code>⌘ ⇧ V</code> pastes plain text.</li><li>The bottom-right counter shows the word count of selected text.</li></ul>
 <hr/><p>Next: <cite type="doc" doc-id="fef343a5-4478-5c2a-9c3b-efa884d71ddb" file-type="docx">Blocks: lists, quotes and callouts</cite>.</p>
