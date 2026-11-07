@@ -48,7 +48,8 @@ pub fn parent_of(window: &Window) -> usize {
 
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
-    use super::*;
+    use super::{Duration, Job, run};
+    use gpui::Application;
 
     #[test]
     fn exports_html_and_svg_with_the_windows_backend() {
