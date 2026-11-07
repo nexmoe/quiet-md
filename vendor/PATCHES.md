@@ -1,6 +1,6 @@
 # vendor 补丁
 
-`vendor/gpui` 是 crates.io 的 gpui 0.2.2，`vendor/taffy` 是 taffy 0.9.0，都打了本地补丁。项目通过 `Cargo.toml` 的 `[patch.crates-io]` 使用这两个目录。补丁处都带 `quiet.md:` 注释；完整列表以下表和 diff 为准。
+`vendor/gpui` 是 crates.io 的 gpui 0.2.2，`vendor/taffy` 是 taffy 0.9.0，`vendor/xattr` 是 xattr 0.2.3，都打了本地补丁。项目通过 `Cargo.toml` 的 `[patch.crates-io]` 使用这些目录。补丁处都带 `quiet.md:` 注释；完整列表以下表和 diff 为准。
 
 和上游对比：
 
@@ -36,11 +36,19 @@ diff -ru $R/taffy-0.9.0/src vendor/taffy/src
 | 16 | `platform/windows/clipboard.rs` | 读剪贴板时文字、图片、复制的文件一起读（原来只取第一个认得的格式）；新增位图（`CF_DIB`，转成 PNG）；复制的图片文件读成图片，其他文件的路径按行分开（原来连成一串） | 截图工具放进剪贴板的位图能粘贴，不再贴出截图文件的路径；从资源管理器复制的图片能粘贴 |
 | 17 | `elements/div.rs` | `paint_scroll_listener`：只在一个方向上可滚动的容器，只接收偏向这个方向的滚动（横向量大于竖向量才横滚，反之才竖滚）。原来竖向滚轮在只能横滚的容器上会被转成横滚，触控板竖滑带的少量横向分量也会照单全收；原有的方向锁只在两个方向都有量时才生效，单向容器另一方向恒为 0，所以从不触发 | 竖着滚动经过宽表格时，表格不再跟着左右滑动；在表格上横向滑动仍然能横滚 |
 
+| 18 | `platform/linux/wayland/client.rs`、`platform/linux/x11/client.rs` | 外观变化时先复制窗口句柄，释放 client 的 RefCell 借用后再触发窗口回调 | 避免回调重新访问平台、更新菜单时触发重复借用 panic |
+
 ## taffy 0.9.0
 
 | 文件 | 改动 | 用途 |
 |---|---|---|
 | `compute/grid/track_sizing.rs` | 「超出限制」阶段只对受影响的轨道分配空间，增长上限只看 `fit-content()` 参数。这是从 taffy 0.13 移植的修复 | 跨多个 auto 行的合并单元格在 min-content 约束下原来不会撑高这些行 |
+
+## xattr 0.2.3
+
+| 文件 | 改动 | 用途 |
+|---|---|---|
+| `src/sys/mod.rs` | Linux/Android 下 `ENOATTR` 映射为 `::libc::ENODATA` | 解决现代 libc crate 在 Linux GNU 下没有 `ENOATTR` 常量导致的编译错误 |
 
 ## 删掉的上游文件
 

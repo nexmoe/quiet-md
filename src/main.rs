@@ -1,6 +1,8 @@
 #![recursion_limit = "512"]
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+pub(crate) const APP_ID: &str = "com.s1dashu.quietmd";
+
 mod app;
 mod shared_store;
 mod quick_note;
@@ -82,6 +84,8 @@ fn open_main_window(scripted: bool, cx: &mut App) {
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             window_background: crate::theme::window_background(),
+            app_id: Some(crate::APP_ID.into()),
+            window_decorations: if cfg!(target_os = "linux") { Some(WindowDecorations::Client) } else { None },
             titlebar: Some(TitlebarOptions {
                 title: Some("Quiet.md".into()),
                 appears_transparent: cfg!(any(target_os = "macos", target_os = "windows")),

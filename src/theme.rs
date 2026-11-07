@@ -24,7 +24,8 @@ pub fn glass() -> bool {
         static GLASS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         *GLASS.get_or_init(|| windows_build().is_some_and(|b| b >= 22621))
     }
-    #[cfg(not(target_os = "windows"))] { true }
+    #[cfg(target_os = "linux")] { false }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))] { true }
 }
 
 #[cfg(target_os = "windows")]
@@ -297,12 +298,18 @@ pub fn shadow_button() -> Vec<BoxShadow> {
     vec![shadow(0.05, 1., 1.5, 0.)]
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub const UI_FONT: &str = ".SystemUIFont";
-/// SF Mono.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub const UI_FONT: &str = "Noto Sans";
+pub const NUMERAL_FONT: &str = if cfg!(any(target_os = "macos", target_os = "windows")) { "Helvetica Neue" } else { UI_FONT };
+/// Platform monospace font.
 #[cfg(target_os = "macos")]
 pub const MONO_FONT: &str = ".AppleSystemUIFontMonospaced";
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub const MONO_FONT: &str = "Consolas";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub const MONO_FONT: &str = "Noto Sans Mono";
 
 pub struct Theme;
 
@@ -507,7 +514,8 @@ pub const SIDEBAR_MAX: f32 = 800.0;
 /// The editor keeps at least this much room when the sidebar is dragged wider.
 pub const SIDEBAR_MIN_CONTENT: f32 = 540.0;
 /// Left inset of the header controls that sit beside the macOS traffic lights.
-pub const TRAFFIC_LIGHTS_W: f32 = if cfg!(target_os = "macos") { 92.0 } else { 16.0 };
+// On PC, 12pt padding + 4pt margin + half the 28pt button aligns with the sidebar icon at 30pt.
+pub const TRAFFIC_LIGHTS_W: f32 = if cfg!(target_os = "macos") { 92.0 } else { 12.0 };
 
 /// (font size, line height, margin top, margin bottom) per block.
 pub struct BlockMetrics {

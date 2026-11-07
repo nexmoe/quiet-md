@@ -711,6 +711,13 @@ impl Element for RichTextElement {
         let state: Rc<RefCell<Option<Prepared>>> = Rc::new(RefCell::new(None));
         let font_size = px(self.spec.size);
         let line_height = px(self.spec.line_height);
+        // Linux fallback fonts change during IME composition; keep the title baseline stable.
+        let title_metrics = if cfg!(target_os = "linux") && self.id == crate::editor::core::TITLE {
+            let ts = window.text_system();
+            let id = ts.resolve_font(&font_for(&self.spec, &Marks::default()));
+            // GPUI Linux font metrics use a signed descent; shaped line layouts use a positive distance.
+            Some((ts.ascent(id, font_size), px(f32::from(ts.descent(id, font_size)).abs())))
+        } else { None };
         let mut eq_src: Vec<(usize, ObjSrc)> = vec![];
         let (text, runs) = if self.text.is_empty() {
             match &self.placeholder {
@@ -827,6 +834,13 @@ impl Element for RichTextElement {
                 let line_eqs: Vec<&EqGeom> = eqs.iter().map(|e| &**e).filter(|e| e.ix >= start && e.ix < start + len).collect();
                 if custom {
                     adjust_line(&mut l, spacing, &line_eqs, start, wrap_width);
+                }
+                if let Some((ascent, descent)) = title_metrics {
+                    let src = &l.unwrapped_layout;
+                    let layout = LineLayout { font_size: src.font_size, width: src.width, ascent, descent, runs: src.runs.clone(), len: src.len };
+                    let wrapped = WrappedLineLayout { unwrapped_layout: std::sync::Arc::new(layout), wrap_boundaries: l.wrap_boundaries().into(), wrap_width: l.wrap_width };
+                    let target: &mut std::sync::Arc<WrappedLineLayout> = &mut l;
+                    *target = std::sync::Arc::new(wrapped);
                 }
                 // Row heights: the line box grows to contain equation boxes.
                 let layout = &l.unwrapped_layout;

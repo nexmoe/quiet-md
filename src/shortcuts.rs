@@ -13,19 +13,19 @@ pub fn global_key() -> String {
 }
 pub fn init(cx: &mut App) {
     let base = cx.key_bindings().borrow().bindings().cloned().collect::<Vec<_>>();
-    #[cfg(target_os = "windows")]
-    let base = base.into_iter().filter_map(windows_binding).collect();
+    #[cfg(not(target_os = "macos"))]
+    let base = base.into_iter().filter_map(pc_binding).collect();
     let custom = std::fs::read(path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     cx.set_global(Shortcuts { base, custom });
     rebuild(cx);
 }
 
-#[cfg(any(test, target_os = "windows"))]
-fn windows_binding(binding: KeyBinding) -> Option<KeyBinding> {
-    let keys = binding.keystrokes().iter().map(|k| k.unparse().replace("win-", "cmd-")).collect::<Vec<_>>().join(" ");
-    // Cocoa's control-key navigation conflicts with Windows editing shortcuts.
+#[cfg(any(test, not(target_os = "macos")))]
+fn pc_binding(binding: KeyBinding) -> Option<KeyBinding> {
+    let keys = binding.keystrokes().iter().map(|k| k.unparse().replace("win-", "cmd-").replace("super-", "cmd-")).collect::<Vec<_>>().join(" ");
+    // Cocoa's control-key navigation conflicts with PC editing shortcuts.
     if matches!(keys.as_str(), "ctrl-a" | "ctrl-b" | "ctrl-d" | "ctrl-e" | "ctrl-f" | "ctrl-h" | "ctrl-n" | "ctrl-p" | "ctrl-backspace") { return None; }
-    // Ctrl+Backspace deletes a word on Windows; do not override it with macOS line deletion.
+    // Ctrl+Backspace deletes a word on PC platforms; do not override it with macOS line deletion.
     if keys == "cmd-backspace" { return None; }
     let keys = if binding.action().name().ends_with("::InlineCode") { "ctrl-shift-c".to_string() } else { keys.split(' ').map(|key| match key {
         "cmd-left" => "home".into(), "cmd-right" => "end".into(),
@@ -40,33 +40,33 @@ fn windows_binding(binding: KeyBinding) -> Option<KeyBinding> {
 
 #[cfg(test)]
 mod tests {
-    use super::windows_binding;
+    use super::pc_binding;
     use gpui::KeyBinding;
     #[test]
-    fn windows_word_deletion_has_no_line_deletion_collision() {
+    fn pc_word_deletion_has_no_line_deletion_collision() {
         use crate::editor::keymap::{DeleteWordBack, DeleteWordForward, DeleteToLineStart, Backspace};
         for (binding, expected) in [
             (KeyBinding::new("alt-backspace", DeleteWordBack, Some("Editor")), "ctrl-backspace"),
             (KeyBinding::new("alt-delete", DeleteWordForward, Some("Editor")), "ctrl-delete"),
         ] {
-            let mapped = windows_binding(binding).unwrap();
+            let mapped = pc_binding(binding).unwrap();
             assert_eq!(mapped.keystrokes()[0].unparse(), expected);
         }
-        assert!(windows_binding(KeyBinding::new("cmd-backspace", DeleteToLineStart, Some("Editor"))).is_none());
-        assert!(windows_binding(KeyBinding::new("ctrl-backspace", Backspace, Some("Editor"))).is_none());
+        assert!(pc_binding(KeyBinding::new("cmd-backspace", DeleteToLineStart, Some("Editor"))).is_none());
+        assert!(pc_binding(KeyBinding::new("ctrl-backspace", Backspace, Some("Editor"))).is_none());
     }
     #[test]
-    fn copy_and_inline_code_keep_distinct_windows_shortcuts() {
+    fn copy_and_inline_code_keep_distinct_pc_shortcuts() {
         use crate::editor::keymap::{Copy, InlineCode};
-        let copy = windows_binding(KeyBinding::new("cmd-c", Copy, Some("Editor"))).unwrap();
-        let code = windows_binding(KeyBinding::new("cmd-ctrl-c", InlineCode, Some("Editor"))).unwrap();
+        let copy = pc_binding(KeyBinding::new("cmd-c", Copy, Some("Editor"))).unwrap();
+        let code = pc_binding(KeyBinding::new("cmd-ctrl-c", InlineCode, Some("Editor"))).unwrap();
         assert_eq!(copy.keystrokes().iter().map(|k| k.unparse()).collect::<Vec<_>>(), ["ctrl-c"]);
         assert_eq!(code.keystrokes().iter().map(|k| k.unparse()).collect::<Vec<_>>(), ["ctrl-shift-c"]);
         assert_ne!(copy.keystrokes(), code.keystrokes());
     }
 }
 /// Mac key notation (⌘ ⌥ ⇧ ⌃, "⌘ + Shift + 7") as Windows writes it, the way
-/// `windows_binding` maps the keys: ⌘ is Ctrl, ⌘ ⌃ C (inline code) is
+/// `pc_binding` maps the keys: ⌘ is Ctrl, ⌘ ⌃ C (inline code) is
 /// Ctrl+Shift+C, ⌘ with an arrow is Home / End. "⌘ + B" stays spaced
 /// ("Ctrl + B"), "⌘ B" becomes "Ctrl+B". A combination Windows has no twin
 /// for (⌘ ⌃ ⇧ 4, the macOS screenshot) is left as written.
@@ -119,13 +119,13 @@ pub fn windows_keys(s: &str) -> String {
 }
 
 fn first_group_hint() -> &'static str {
-    if cfg!(target_os = "windows") { tr("第一组请包含 Ctrl 或 Alt", "Start with Ctrl or Alt") } else { tr("第一组请包含 ⌘、⌃ 或 ⌥", "Start with ⌘, ⌃ or ⌥") }
+    if cfg!(not(target_os = "macos")) { tr("第一组请包含 Ctrl 或 Alt", "Start with Ctrl or Alt") } else { tr("第一组请包含 ⌘、⌃ 或 ⌥", "Start with ⌘, ⌃ or ⌥") }
 }
 
-/// A UI label's keys for this platform: `windows_keys` on Windows (cached,
+/// A UI label's keys for this platform: `windows_keys` on non-macOS platforms (cached,
 /// labels are `'static`), the text itself elsewhere.
 pub fn keys(s: &'static str) -> &'static str {
-    if !cfg!(target_os = "windows") { return s }
+    if !cfg!(not(target_os = "macos")) { return s }
     static CACHE: std::sync::Mutex<BTreeMap<&'static str, &'static str>> = std::sync::Mutex::new(BTreeMap::new());
     let mut cache = CACHE.lock().unwrap();
     cache.entry(s).or_insert_with(|| Box::leak(windows_keys(s).into_boxed_str()))
@@ -144,7 +144,7 @@ pub fn hint(action: &str, default: &'static str) -> &'static str {
     let text = key.split(' ').map(|stroke| {
         let Ok(k) = Keystroke::parse(stroke) else { return stroke.to_string() };
         let m = k.modifiers;
-        let names = if cfg!(target_os = "windows") { [(m.control, "Ctrl"), (m.alt, "Alt"), (m.shift, "Shift"), (m.platform, "Win")] } else { [(m.platform, "⌘"), (m.alt, "⌥"), (m.shift, "Shift"), (m.control, "Control")] };
+        let names = if cfg!(not(target_os = "macos")) { [(m.control, "Ctrl"), (m.alt, "Alt"), (m.shift, "Shift"), (m.platform, if cfg!(target_os = "windows") { "Win" } else { "Super" })] } else { [(m.platform, "⌘"), (m.alt, "⌥"), (m.shift, "Shift"), (m.control, "Control")] };
         let mut parts: Vec<String> = names.into_iter().filter(|(on, _)| *on).map(|(_, s)| s.to_string()).collect();
         parts.push(match k.key.as_str() { "space" => "Space".into(), "enter" => "Enter".into(), k if k.chars().count() == 1 => k.to_uppercase(), k => { let mut c = k.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() } });
         parts.join(" + ")
@@ -230,7 +230,7 @@ fn info(name: &str) -> Option<(usize, &'static str, &'static str)> {
 pub fn label(name: &str) -> Option<&'static str> { info(name).map(|(_, zh, en)| if english() { en } else { zh }) }
 fn default_key(s: &Shortcuts, id: &str) -> String {
     if id == "global" { return GLOBAL_DEFAULT.into(); }
-    if id.ends_with("::NewDoc") { return if cfg!(target_os = "windows") { "ctrl-n" } else { "cmd-n" }.into(); }
+    if id.ends_with("::NewDoc") { return if cfg!(not(target_os = "macos")) { "ctrl-n" } else { "cmd-n" }.into(); }
     s.base.iter().find(|b| b.action().name() == id).map(|b| b.keystrokes().iter().map(|k| k.unparse()).collect::<Vec<_>>().join(" ")).unwrap_or_default()
 }
 /// The key an action runs on now.
@@ -258,8 +258,8 @@ pub fn pretty(key: &str) -> String {
     key.split(' ').map(|stroke| {
         let Ok(ks) = Keystroke::parse(stroke) else { return stroke.to_string() };
         let m = ks.modifiers;
-        let win = cfg!(target_os = "windows");
-        let names = if win { [(m.control, "Ctrl"), (m.alt, "Alt"), (m.shift, "Shift"), (m.platform, "Win")] } else { [(m.control, "⌃"), (m.alt, "⌥"), (m.shift, "⇧"), (m.platform, "⌘")] };
+        let win = cfg!(not(target_os = "macos"));
+        let names = if win { [(m.control, "Ctrl"), (m.alt, "Alt"), (m.shift, "Shift"), (m.platform, if cfg!(target_os = "windows") { "Win" } else { "Super" })] } else { [(m.control, "⌃"), (m.alt, "⌥"), (m.shift, "⇧"), (m.platform, "⌘")] };
         let mut out: Vec<String> = names.into_iter().filter(|(on, _)| *on).map(|(_, s)| s.to_string()).collect();
         out.push(match ks.key.as_str() {
             "space" => "Space".into(), "escape" => "Esc".into(),

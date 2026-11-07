@@ -110,7 +110,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
     ]);
     // Windows: F11 for full screen, and Ctrl+H for 查找和替换 as in Office
-    // and Notepad (written cmd-h: `shortcuts::windows_binding` maps cmd to
+    // and Notepad (written cmd-h: `shortcuts::pc_binding` maps cmd to
     // ctrl and drops a literal ctrl-h, Cocoa's backspace).
     #[cfg(not(target_os = "macos"))]
     cx.bind_keys([KeyBinding::new("f11", ToggleFullScreen, None), KeyBinding::new("cmd-h", ReplaceInDoc, None)]);

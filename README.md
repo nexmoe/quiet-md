@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  English · <a href="README.zh-CN.md">简体中文</a>
+  English · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
@@ -38,6 +38,8 @@
 
 > [!NOTE]
 > Quiet.md is in **beta** and changing quickly. If you hit a bug or have an idea, please [open an issue](https://github.com/s1dashu/quiet-md/issues) — or better, send a pull request.
+
+Linux support is experimental and currently built from source; see the [Linux instructions and validation limits](CONTRIBUTING.md#linux-experimental).
 
 ## Why Quiet.md
 
@@ -101,16 +103,11 @@ A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character doc
 
 Thanks to everyone who has helped build Quiet.md. Issues and pull requests are welcome: building, testing and code conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-<p>
-  <a href="https://github.com/s1dashu"><img src="docs/images/contributors/s1dashu.svg" width="48" height="48" alt="s1dashu" title="s1dashu"></a>
-  <a href="https://github.com/jimuzhe"><img src="docs/images/contributors/jimuzhe.svg" width="48" height="48" alt="jimuzhe" title="jimuzhe"></a>
-  <a href="https://github.com/chinayuren2022-2025"><img src="docs/images/contributors/chinayuren2022-2025.svg" width="48" height="48" alt="chinayuren2022-2025" title="chinayuren2022-2025"></a>
-  <a href="https://github.com/anthropics/claude-code"><img src="docs/images/contributors/anthropics.svg" width="48" height="48" alt="Claude Code (AI agent)" title="Claude Code (AI agent)"></a>
-  <a href="https://github.com/openai/codex"><img src="docs/images/contributors/openai.svg" width="48" height="48" alt="Codex (AI agent)" title="Codex (AI agent)"></a>
-</p>
+[![Contributors](https://raw.githubusercontent.com/s1dashu/quiet-md/contributors-assets/docs/images/contributors.svg?v=1)](https://github.com/s1dashu/quiet-md/graphs/contributors)
 
 ## Recent updates
 
+- **0.1.7** (Nov 6): safer multi-window saving, conflict recovery and disk writes; restricted export file access; Markdown exports keep inline attachments. Fixed Chinese input deletion with Weasel on Windows.
 - **0.1.6** (Nov 6): smoother window switching and typing, wider tables, regular saves during continuous typing, and Option+Space for global quick notes on macOS. Windows adds image paste, PDF export and printing, with corrected word deletion.
 - **0.1.5** (Nov 5): the app is now called Quiet.md; your library and notes stay where they were.
   - Manage several documents at once from Home: duplicate, move or delete them together.
